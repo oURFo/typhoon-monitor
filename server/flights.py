@@ -6,10 +6,13 @@ import asyncio
 import csv
 import io
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from .http_client import async_client
+
+TAIWAN_TZ = timezone(timedelta(hours=8))
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "airports.json"
 
@@ -26,6 +29,10 @@ AIRPORT_FETCH_ORDER = ("TSA", "KHH", "RMQ", "TPE")
 
 CANCEL_KEYWORDS = ("取消", "cancel", "canceled", "cancelled")
 DELAY_KEYWORDS = ("延誤", "delay", "delayed", "晚")
+DEPARTED_KEYWORDS = ("離站", "departed", "已飛", "已出發")
+ARRIVED_KEYWORDS = ("已抵", "arrived", "已到", "抵達機坪", "抵達")
+PAST_GRACE_MIN = 20
+OVERDUE_MIN = 15
 
 
 def load_airport_config() -> dict[str, Any]:
@@ -150,7 +157,121 @@ def _format_time(value: str) -> str:
         return part[:5] if len(part) >= 5 else part
     if len(value) >= 5 and value[2] == ":":
         return value[:5]
+    digits = "".join(c for c in value if c.isdigit())
+    if len(digits) >= 4:
+        return f"{digits[:2]}:{digits[2:4]}"
     return value[:5] if len(value) >= 5 else value
+
+
+def _parse_time_minutes(value: str) -> int | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    if ":" in raw:
+        parts = raw.split(":", 1)
+        try:
+            h, m = int(parts[0]), int(parts[1][:2])
+            if 0 <= h < 24 and 0 <= m < 60:
+                return h * 60 + m
+        except ValueError:
+            pass
+    digits = "".join(c for c in raw if c.isdigit())
+    if len(digits) >= 4:
+        h, m = int(digits[:2]), int(digits[2:4])
+        if 0 <= h < 24 and 0 <= m < 60:
+            return h * 60 + m
+    return None
+
+
+def _taiwan_now_minutes() -> int:
+    now = datetime.now(TAIWAN_TZ)
+    return now.hour * 60 + now.minute
+
+
+def _times_differ(scheduled: str, estimated: str) -> bool:
+    sm = _parse_time_minutes(scheduled)
+    em = _parse_time_minutes(estimated)
+    if sm is not None and em is not None:
+        return sm != em
+    return bool(scheduled and estimated and scheduled != estimated)
+
+
+def _is_past_flight(flight: dict[str, Any], now_mins: int) -> bool:
+    blob = f"{flight.get('statusText', '')} {flight.get('remark', '')}".lower()
+    direction = flight.get("direction")
+    if direction == "arrival":
+        if any(k in blob for k in ARRIVED_KEYWORDS):
+            return True
+    elif any(k in blob for k in DEPARTED_KEYWORDS):
+        return True
+
+    ref = _parse_time_minutes(flight.get("estimatedTime") or "") or _parse_time_minutes(
+        flight.get("scheduledTime") or ""
+    )
+    if ref is None:
+        return False
+    return ref < now_mins - PAST_GRACE_MIN
+
+
+def enrich_flight(flight: dict[str, Any], now_mins: int) -> dict[str, Any]:
+    """推斷顯示狀態、變更時間、是否已飛，供快照預處理。"""
+    out = dict(flight)
+    sched = out.get("scheduledTime") or ""
+    est = out.get("estimatedTime") or ""
+    sched_m = _parse_time_minutes(sched)
+    est_m = _parse_time_minutes(est)
+    sort_m = sched_m if sched_m is not None else (est_m if est_m is not None else 9999)
+
+    blob = f"{out.get('statusText', '')} {out.get('remark', '')}".lower()
+    is_past = _is_past_flight(out, now_mins)
+    time_changed = _times_differ(sched, est)
+    overdue = sched_m is not None and not is_past and now_mins > sched_m + OVERDUE_MIN
+
+    if any(k in blob for k in CANCEL_KEYWORDS):
+        status = "cancelled"
+    elif time_changed and not is_past:
+        status = "changed"
+    elif (any(k in blob for k in DELAY_KEYWORDS) or overdue) and not is_past:
+        status = "delayed"
+    else:
+        status = "on_time"
+
+    if status == "changed":
+        display_time = est or sched
+    elif status == "delayed":
+        display_time = est if time_changed else ""
+    else:
+        display_time = est or sched
+
+    out["sortMinutes"] = sort_m
+    out["isPast"] = is_past
+    out["status"] = status
+    out["displayTime"] = display_time
+    return out
+
+
+def sort_flight_list(flights: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(flights, key=lambda f: (1 if f.get("isPast") else 0, f.get("sortMinutes", 9999)))
+
+
+def prepare_snapshot(flights: list[dict[str, Any]]) -> dict[str, Any]:
+    """豐富化並依機場預排序（供前端直接讀取，避免即時排序卡頓）。"""
+    now_mins = _taiwan_now_minutes()
+    enriched = [enrich_flight(f, now_mins) for f in flights]
+    grouped = _flights_by_airport(enriched)
+    sorted_by = {code: sort_flight_list(rows) for code, rows in grouped.items()}
+
+    all_sorted: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for code in AIRPORT_FETCH_ORDER:
+        if code in sorted_by:
+            all_sorted.extend(sorted_by[code])
+            seen.add(code)
+    for code, rows in sorted_by.items():
+        if code not in seen:
+            all_sorted.extend(rows)
+
+    return {"flights": all_sorted, "byAirport": sorted_by}
 
 
 def _parse_json_text(text: str) -> Any:

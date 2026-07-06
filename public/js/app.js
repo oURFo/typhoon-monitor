@@ -11,6 +11,7 @@ const state = {
   searchNumber: "",
   searchDestination: "",
   allFlights: [],
+  byAirport: {},
   cacheHint: "",
 };
 
@@ -23,6 +24,7 @@ let markerLayer;
 
 const STATUS_LABEL = {
   on_time: "準時",
+  changed: "變更",
   delayed: "延誤",
   cancelled: "取消",
 };
@@ -36,61 +38,30 @@ const AIRPORT_LABEL = {
 
 const AIRPORT_CODES = ["TSA", "KHH", "RMQ", "TPE"];
 
-const DEPARTED_KEYWORDS = ["離站", "departed", "已飛", "已出發"];
-const ARRIVED_KEYWORDS = ["已抵", "arrived", "已到", "抵達機坪", "抵達"];
-
-function parseTimeToMinutes(value) {
-  if (!value) return null;
-  const raw = String(value).trim();
-  if (raw.includes(":")) {
-    const [h, m] = raw.split(":").map((x) => parseInt(x, 10));
-    if (!Number.isNaN(h) && !Number.isNaN(m)) return h * 60 + m;
-  }
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length >= 4) {
-    const h = parseInt(digits.slice(0, 2), 10);
-    const m = parseInt(digits.slice(2, 4), 10);
-    if (h < 24 && m < 60) return h * 60 + m;
-  }
-  return null;
-}
-
-function getTaiwanNowMinutes() {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Taipei",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
-  const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
-  return hour * 60 + minute;
-}
-
-function flightSortMinutes(f) {
-  return parseTimeToMinutes(f.scheduledTime) ?? parseTimeToMinutes(f.estimatedTime) ?? 9999;
-}
-
 function isFlightPast(f) {
-  const blob = `${f.statusText || ""} ${f.remark || ""}`.toLowerCase();
-  if (f.direction === "arrival") {
-    if (ARRIVED_KEYWORDS.some((k) => blob.includes(k.toLowerCase()))) return true;
-  } else if (DEPARTED_KEYWORDS.some((k) => blob.includes(k.toLowerCase()))) {
-    return true;
-  }
-
-  const mins = parseTimeToMinutes(f.estimatedTime) ?? parseTimeToMinutes(f.scheduledTime);
-  if (mins == null) return false;
-  return mins < getTaiwanNowMinutes() - 20;
+  return !!f.isPast;
 }
 
-function sortFlights(rows) {
-  return [...rows].sort((a, b) => {
-    const pastA = isFlightPast(a) ? 1 : 0;
-    const pastB = isFlightPast(b) ? 1 : 0;
-    if (pastA !== pastB) return pastA - pastB;
-    return flightSortMinutes(a) - flightSortMinutes(b);
-  });
+function formatFlightTimeLine(f) {
+  const sched = f.scheduledTime || "-";
+  if (f.status === "changed") {
+    return `表定 ${sched} · 變更 ${f.displayTime || f.estimatedTime || "-"}`;
+  }
+  if (f.status === "delayed") {
+    const changed = f.displayTime || f.estimatedTime;
+    if (changed && changed !== sched) {
+      return `表定 ${sched} · 變更 ${changed}`;
+    }
+    return `表定 ${sched} · 延誤`;
+  }
+  if (f.status === "cancelled") {
+    return `表定 ${sched}`;
+  }
+  const est = f.displayTime || f.estimatedTime;
+  if (est && est !== sched) {
+    return `表定 ${sched} · 預估 ${est}`;
+  }
+  return `表定 ${sched}`;
 }
 
 function initMap() {
@@ -301,15 +272,15 @@ function renderFlights() {
   const hint = document.getElementById("searchHint");
   let rows = state.flights;
 
-  if (state.airportFilter !== "all") {
-    rows = rows.filter((f) => f.airport === state.airportFilter);
+  if (!state.searchActive && state.airportFilter !== "all") {
+    rows = state.byAirport[state.airportFilter] || rows;
   }
+
   if (state.statusFilter !== "all") {
     rows = rows.filter((f) => f.status === state.statusFilter);
   }
 
   const limit = state.searchActive ? 200 : 60;
-  rows = sortFlights(rows);
   const total = rows.length;
   rows = rows.slice(0, limit);
 
@@ -341,7 +312,7 @@ function renderFlights() {
       </div>
       <div>${AIRPORT_LABEL[f.airport] || f.airport} · ${f.direction === "arrival" ? "抵達" : "出發"}</div>
       <div>${f.airline || "-"} → ${f.destination || f.origin || "-"}</div>
-      <div class="muted">表定 ${f.scheduledTime || "-"} · 預估 ${f.estimatedTime || "-"}</div>
+      <div class="muted">${formatFlightTimeLine(f)}</div>
       ${f.remark ? `<div class="muted">${f.remark}</div>` : ""}
     </div>`
     )
@@ -416,7 +387,9 @@ async function fetchFlightsPayload() {
   const res = await fetch(flightsDataUrl());
   if (!res.ok) throw new Error("航班資料載入失敗");
   const data = await res.json();
-  const tpeCount = (data.flights || []).filter((f) => f.airport === "TPE").length;
+  const tpeCount = (data.byAirport?.TPE || data.flights || []).filter(
+    (f) => f.airport === "TPE"
+  ).length;
   if (tpeCount > 0) return data;
 
   const tpeUrl = flightsDataUrl().replace("flights.json", "tpe-flights.json");
@@ -424,9 +397,11 @@ async function fetchFlightsPayload() {
     const tpeRes = await fetch(tpeUrl);
     if (!tpeRes.ok) return data;
     const tpeData = await tpeRes.json();
-    const tpeRows = tpeData.flights || [];
+    const tpeRows = tpeData.byAirport?.TPE || tpeData.flights || [];
     if (!tpeRows.length) return data;
     const others = (data.flights || []).filter((f) => f.airport !== "TPE");
+    const byAirport = { ...(data.byAirport || {}) };
+    delete byAirport.TPE;
     const airports = (data.airports || []).filter((a) => a.code !== "TPE");
     airports.push({
       code: "TPE",
@@ -437,6 +412,7 @@ async function fetchFlightsPayload() {
     return {
       ...data,
       flights: [...others, ...tpeRows],
+      byAirport: { ...byAirport, TPE: tpeRows },
       airports,
       count: others.length + tpeRows.length,
     };
@@ -500,7 +476,15 @@ async function loadFlights() {
   if (state.searchActive) return;
   const data = await fetchFlightsPayload();
 
+  state.byAirport = data.byAirport || {};
   state.allFlights = data.flights || [];
+  if (!Object.keys(state.byAirport).length && state.allFlights.length) {
+    state.byAirport = state.allFlights.reduce((acc, f) => {
+      const code = f.airport || "?";
+      (acc[code] ||= []).push(f);
+      return acc;
+    }, {});
+  }
   state.flights = state.allFlights;
   const fromApi = data.airports || [];
   state.airports = fromApi.length

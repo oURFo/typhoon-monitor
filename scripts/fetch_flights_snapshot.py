@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from server.flights import _flights_by_airport, fetch_all_flights  # noqa: E402
+from server.flights import _flights_by_airport, fetch_all_flights, prepare_snapshot  # noqa: E402
 
 OUTPUT = ROOT / "data" / "flights.json"
 TPE_OUTPUT = ROOT / "data" / "tpe-flights.json"
@@ -23,7 +23,7 @@ def load_stale_by_airport() -> dict[str, list[dict]]:
     if TPE_OUTPUT.exists():
         try:
             tpe_data = json.loads(TPE_OUTPUT.read_text(encoding="utf-8"))
-            tpe_rows = tpe_data.get("flights", [])
+            tpe_rows = tpe_data.get("byAirport", {}).get("TPE") or tpe_data.get("flights", [])
             if tpe_rows:
                 grouped["TPE"] = tpe_rows
         except json.JSONDecodeError:
@@ -44,7 +44,8 @@ def load_stale_by_airport() -> dict[str, list[dict]]:
 async def main() -> int:
     stale = load_stale_by_airport()
     data = await fetch_all_flights(stale_by_airport=stale)
-    flights = data.get("flights", [])
+    prepared = prepare_snapshot(data.get("flights", []))
+    flights = prepared["flights"]
     total = len(flights)
     if total == 0:
         print("ERROR: no flights fetched", file=sys.stderr)
@@ -55,6 +56,7 @@ async def main() -> int:
         "updatedAt": now,
         "airports": data.get("airports", []),
         "flights": flights,
+        "byAirport": prepared["byAirport"],
         "count": total,
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
@@ -64,9 +66,15 @@ async def main() -> int:
     tpe_rows = [f for f in flights if f.get("airport") == "TPE"]
     tpe_meta = next((a for a in payload["airports"] if a.get("code") == "TPE"), {})
     if tpe_rows and not tpe_meta.get("stale"):
+        tpe_prepared = prepare_snapshot(tpe_rows)
         TPE_OUTPUT.write_text(
             json.dumps(
-                {"updatedAt": now, "flights": tpe_rows, "count": len(tpe_rows)},
+                {
+                    "updatedAt": now,
+                    "flights": tpe_prepared["flights"],
+                    "byAirport": tpe_prepared["byAirport"],
+                    "count": len(tpe_rows),
+                },
                 ensure_ascii=False,
                 indent=2,
             ),

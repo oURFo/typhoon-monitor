@@ -310,6 +310,7 @@ select {
 }
 
 .badge.on_time { background: rgba(62, 207, 142, 0.2); color: var(--ok); }
+.badge.changed { background: rgba(61, 156, 245, 0.2); color: var(--accent); }
 .badge.delayed { background: rgba(240, 162, 2, 0.2); color: var(--warn); }
 .badge.cancelled { background: rgba(240, 93, 94, 0.2); color: var(--danger); }
 
