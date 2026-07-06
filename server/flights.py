@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from .http_client import async_client
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "airports.json"
+
+FETCH_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "TyphoonMonitor/1.0 (educational; +https://github.com/oURFo/typhoon-monitor)",
+}
+
+AIRPORT_TIMEOUT = 45.0
 
 CANCEL_KEYWORDS = ("取消", "cancel", "canceled", "cancelled")
 DELAY_KEYWORDS = ("延誤", "delay", "delayed", "晚")
@@ -129,13 +135,12 @@ def _extract_rows(payload: Any) -> list[dict[str, Any]]:
 
 
 async def _fetch_json(url: str) -> Any:
-    async with async_client() as client:
-        res = await client.get(url, headers={"Accept": "application/json"})
+    async with async_client(timeout=AIRPORT_TIMEOUT) as client:
+        res = await client.get(url, headers=FETCH_HEADERS)
         res.raise_for_status()
         text = res.text.strip()
         if text.startswith("[") or text.startswith("{"):
             return json.loads(text)
-        # 桃園 ODP 可能回傳 JSON Lines
         rows: list[Any] = []
         for line in text.splitlines():
             line = line.strip()
@@ -181,25 +186,63 @@ async def fetch_airport_flights(code: str, config: dict[str, Any]) -> list[dict[
     return flights
 
 
+async def _fetch_airport_bundle(code: str, airport: dict[str, Any]) -> dict[str, Any]:
+    name = airport.get("name", code)
+    try:
+        rows = await fetch_airport_flights(code, airport)
+        return {
+            "code": code,
+            "name": name,
+            "flights": rows,
+            "count": len(rows),
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "code": code,
+            "name": name,
+            "flights": [],
+            "count": 0,
+            "error": str(exc),
+        }
+
+
 async def fetch_all_flights() -> dict[str, Any]:
     config = load_airport_config()
+    codes = [
+        (code, airport)
+        for code, airport in config.items()
+        if not code.startswith("_") and isinstance(airport, dict)
+    ]
+    bundles = await asyncio.gather(
+        *[_fetch_airport_bundle(code, airport) for code, airport in codes]
+    )
     result: dict[str, Any] = {"airports": [], "flights": []}
-    for code, airport in config.items():
-        if code.startswith("_") or not isinstance(airport, dict):
-            continue
-        try:
-            rows = await fetch_airport_flights(code, airport)
-            result["airports"].append({"code": code, "name": airport.get("name", code)})
-            result["flights"].extend(rows)
-        except Exception as exc:  # noqa: BLE001 — 單一機場失敗不影響其他
-            result["airports"].append(
-                {
-                    "code": code,
-                    "name": airport.get("name", code),
-                    "error": str(exc),
-                }
-            )
+    for bundle in bundles:
+        airport_meta: dict[str, Any] = {
+            "code": bundle["code"],
+            "name": bundle["name"],
+        }
+        if bundle["error"]:
+            airport_meta["error"] = bundle["error"]
+        result["airports"].append(airport_meta)
+        result["flights"].extend(bundle["flights"])
     return result
+
+
+async def fetch_airport(code: str) -> dict[str, Any]:
+    config = load_airport_config()
+    airport = config.get(code.upper())
+    if not airport or not isinstance(airport, dict):
+        raise ValueError(f"未知機場代碼: {code}")
+    bundle = await _fetch_airport_bundle(code.upper(), airport)
+    return {
+        "airport": bundle["code"],
+        "name": bundle["name"],
+        "flights": bundle["flights"],
+        "count": bundle["count"],
+        "error": bundle["error"],
+    }
 
 
 def filter_flights(
@@ -235,7 +278,12 @@ def filter_flights(
 
 
 async def search_flights(airline_code: str = "", flight_number: str = "") -> dict[str, Any]:
-    data = await fetch_all_flights()
+    from . import flights_cache
+
+    data = flights_cache.get_cached_list()
+    if not data:
+        data = await fetch_all_flights()
+        flights_cache.set_list_cache(data)
     hits = filter_flights(data["flights"], airline_code, flight_number)
     return {
         "airports": data["airports"],
@@ -243,3 +291,25 @@ async def search_flights(airline_code: str = "", flight_number: str = "") -> dic
         "query": {"airlineCode": airline_code.strip(), "flightNumber": flight_number.strip()},
         "count": len(hits),
     }
+
+
+async def get_flights_cached() -> dict[str, Any]:
+    from . import flights_cache
+
+    cached = flights_cache.get_cached_list()
+    if cached:
+        return cached
+    data = await fetch_all_flights()
+    flights_cache.set_list_cache(data)
+    return data
+
+
+async def get_airport_cached(code: str) -> dict[str, Any]:
+    from . import flights_cache
+
+    cached = flights_cache.get_cached_airport(code)
+    if cached:
+        return cached
+    data = await fetch_airport(code)
+    flights_cache.set_airport_cache(code, data)
+    return data

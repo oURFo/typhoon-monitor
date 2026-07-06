@@ -31,6 +31,8 @@ const AIRPORT_LABEL = {
   RMQ: "臺中",
 };
 
+const AIRPORT_CODES = ["TSA", "KHH", "RMQ", "TPE"];
+
 function initMap() {
   map = L.map("map", { zoomControl: true }).setView([20, 125], 5);
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
@@ -302,11 +304,46 @@ async function loadTyphoons() {
 
 async function loadFlights() {
   if (state.searchActive) return;
-  const res = await fetch("/api/flights");
-  if (!res.ok) throw new Error("航班資料載入失敗");
-  const data = await res.json();
-  state.flights = data.flights || [];
-  state.airports = data.airports || [];
+  document.getElementById("searchHint").textContent = "航班載入中…";
+  state.flights = [];
+  state.airports = AIRPORT_CODES.map((code) => ({
+    code,
+    name: AIRPORT_LABEL[code] || code,
+  }));
+  renderAirportTabs();
+  renderFlights();
+
+  const results = await Promise.allSettled(
+    AIRPORT_CODES.map(async (code) => {
+      const res = await fetch(`/api/flights/airport/${code}`);
+      if (!res.ok) throw new Error(`${code} 載入失敗`);
+      return res.json();
+    })
+  );
+
+  const merged = [];
+  const airports = [];
+  results.forEach((result, i) => {
+    const code = AIRPORT_CODES[i];
+    if (result.status === "fulfilled") {
+      const data = result.value;
+      airports.push({
+        code: data.airport || code,
+        name: data.name || AIRPORT_LABEL[code],
+        error: data.error || null,
+      });
+      merged.push(...(data.flights || []));
+    } else {
+      airports.push({
+        code,
+        name: AIRPORT_LABEL[code],
+        error: result.reason?.message || "載入失敗",
+      });
+    }
+  });
+
+  state.flights = merged;
+  state.airports = airports;
   renderAirportTabs();
   renderFlights();
 }

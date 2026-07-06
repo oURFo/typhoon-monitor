@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import os
+import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,12 +12,19 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import cwa, flights
+from . import cwa, flights, flights_cache
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
-app = FastAPI(title="Typhoon Monitor", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(flights_cache.warm_cache(flights.fetch_all_flights))
+    yield
+
+
+app = FastAPI(title="Typhoon Monitor", version="0.1.0", lifespan=lifespan)
 
 PUBLIC_DIR = ROOT / "public"
 app.mount("/static", StaticFiles(directory=PUBLIC_DIR), name="static")
@@ -62,12 +70,28 @@ async def get_flights(
     number: str = "",
 ) -> dict:
     response.headers["Cache-Control"] = "no-store"
-    if airline.strip() or number.strip():
-        data = await flights.search_flights(airline, number)
-    else:
-        data = await flights.fetch_all_flights()
-    data["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    return data
+    try:
+        if airline.strip() or number.strip():
+            data = await flights.search_flights(airline, number)
+        else:
+            data = await flights.get_flights_cached()
+        data["updatedAt"] = datetime.now(timezone.utc).isoformat()
+        return data
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/flights/airport/{code}")
+async def get_flights_by_airport(code: str, response: Response) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        data = await flights.get_airport_cached(code)
+        data["updatedAt"] = datetime.now(timezone.utc).isoformat()
+        return data
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/airports")
