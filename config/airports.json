@@ -2,9 +2,9 @@
   "_note": "不含臺南機場（TNN）",
   "TPE": {
     "name": "桃園國際機場",
-    "departure": "https://odp.taoyuan-airport.com/dataset/2025102001?format=json",
-    "arrival": "https://odp.taoyuan-airport.com/dataset/2025102001?format=json",
-    "note": "單一 JSON 含抵離站，依方向欄位篩選"
+    "departure": "https://odp.taoyuan-airport.com/dataset/2025102001?format=csv",
+    "arrival": "https://odp.taoyuan-airport.com/dataset/2025102001?format=csv",
+    "note": "CSV 體積較小，雲端環境較不易逾時"
   },
   "TSA": {
     "name": "臺北松山機場",

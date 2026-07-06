@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -17,7 +19,8 @@ FETCH_HEADERS = {
 }
 
 AIRPORT_TIMEOUT = 45.0
-TPE_TIMEOUT = 90.0
+TPE_TIMEOUT = 120.0
+TPE_FETCH_RETRIES = 2
 
 CANCEL_KEYWORDS = ("取消", "cancel", "canceled", "cancelled")
 DELAY_KEYWORDS = ("延誤", "delay", "delayed", "晚")
@@ -169,9 +172,31 @@ async def _fetch_json(url: str, *, timeout: float = AIRPORT_TIMEOUT) -> Any:
         return _parse_json_text(text)
 
 
+async def _fetch_tpe_csv(url: str) -> list[dict[str, Any]]:
+    async with async_client(timeout=TPE_TIMEOUT) as client:
+        res = await client.get(url, headers=FETCH_HEADERS)
+        res.raise_for_status()
+        text = res.content.decode("utf-8-sig")
+        return [dict(row) for row in csv.DictReader(io.StringIO(text))]
+
+
 async def _fetch_tpe_rows(url: str) -> list[dict[str, Any]]:
-    payload = await _fetch_json(url, timeout=TPE_TIMEOUT)
-    return _extract_rows(payload)
+    last_exc: Exception | None = None
+    for attempt in range(TPE_FETCH_RETRIES):
+        try:
+            if "format=csv" in url:
+                return await _fetch_tpe_csv(url)
+            payload = await _fetch_json(url, timeout=TPE_TIMEOUT)
+            rows = _extract_rows(payload)
+            if rows:
+                return rows
+            raise ValueError("桃園航班資料為空")
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt + 1 < TPE_FETCH_RETRIES:
+                await asyncio.sleep(2 * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
 
 
 def _extract_rows(payload: Any) -> list[dict[str, Any]]:
@@ -233,12 +258,13 @@ async def _fetch_airport_bundle(code: str, airport: dict[str, Any]) -> dict[str,
             "error": None,
         }
     except Exception as exc:  # noqa: BLE001
+        msg = str(exc).strip() or type(exc).__name__
         return {
             "code": code,
             "name": name,
             "flights": [],
             "count": 0,
-            "error": str(exc),
+            "error": msg,
         }
 
 

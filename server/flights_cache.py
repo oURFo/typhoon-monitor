@@ -41,7 +41,7 @@ def set_airport_cache(code: str, data: dict[str, Any]) -> None:
     _airport_cache[code.upper()] = (time.time(), data)
 
 
-async def warm_cache(fetch_all) -> None:
+async def warm_cache(fetch_all, fetch_airport=None) -> None:
     """背景預熱完整航班快取。"""
     global _warming
     async with _warm_lock:
@@ -49,7 +49,21 @@ async def warm_cache(fetch_all) -> None:
             return
         _warming = True
     try:
+        if fetch_airport:
+            asyncio.create_task(_warm_tpe_only(fetch_airport))
         data = await fetch_all()
         set_list_cache(data)
     finally:
         _warming = False
+
+
+async def _warm_tpe_only(fetch_airport) -> None:
+    """桃園資料較大，獨立預熱避免拖慢整體快取。"""
+    if get_cached_airport("TPE"):
+        return
+    try:
+        data = await fetch_airport("TPE")
+        if data.get("count"):
+            set_airport_cache("TPE", data)
+    except Exception:
+        pass

@@ -20,7 +20,7 @@ load_dotenv(ROOT / ".env")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    asyncio.create_task(flights_cache.warm_cache(flights.fetch_all_flights))
+    asyncio.create_task(flights_cache.warm_cache(flights.fetch_all_flights, flights.fetch_airport))
     yield
 
 
