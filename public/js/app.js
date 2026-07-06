@@ -36,6 +36,63 @@ const AIRPORT_LABEL = {
 
 const AIRPORT_CODES = ["TSA", "KHH", "RMQ", "TPE"];
 
+const DEPARTED_KEYWORDS = ["離站", "departed", "已飛", "已出發"];
+const ARRIVED_KEYWORDS = ["已抵", "arrived", "已到", "抵達機坪", "抵達"];
+
+function parseTimeToMinutes(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (raw.includes(":")) {
+    const [h, m] = raw.split(":").map((x) => parseInt(x, 10));
+    if (!Number.isNaN(h) && !Number.isNaN(m)) return h * 60 + m;
+  }
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 4) {
+    const h = parseInt(digits.slice(0, 2), 10);
+    const m = parseInt(digits.slice(2, 4), 10);
+    if (h < 24 && m < 60) return h * 60 + m;
+  }
+  return null;
+}
+
+function getTaiwanNowMinutes() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Taipei",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+  const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+  return hour * 60 + minute;
+}
+
+function flightSortMinutes(f) {
+  return parseTimeToMinutes(f.scheduledTime) ?? parseTimeToMinutes(f.estimatedTime) ?? 9999;
+}
+
+function isFlightPast(f) {
+  const blob = `${f.statusText || ""} ${f.remark || ""}`.toLowerCase();
+  if (f.direction === "arrival") {
+    if (ARRIVED_KEYWORDS.some((k) => blob.includes(k.toLowerCase()))) return true;
+  } else if (DEPARTED_KEYWORDS.some((k) => blob.includes(k.toLowerCase()))) {
+    return true;
+  }
+
+  const mins = parseTimeToMinutes(f.estimatedTime) ?? parseTimeToMinutes(f.scheduledTime);
+  if (mins == null) return false;
+  return mins < getTaiwanNowMinutes() - 20;
+}
+
+function sortFlights(rows) {
+  return [...rows].sort((a, b) => {
+    const pastA = isFlightPast(a) ? 1 : 0;
+    const pastB = isFlightPast(b) ? 1 : 0;
+    if (pastA !== pastB) return pastA - pastB;
+    return flightSortMinutes(a) - flightSortMinutes(b);
+  });
+}
+
 function initMap() {
   map = L.map("map", { zoomControl: true }).setView([20, 125], 5);
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
@@ -252,6 +309,7 @@ function renderFlights() {
   }
 
   const limit = state.searchActive ? 200 : 60;
+  rows = sortFlights(rows);
   const total = rows.length;
   rows = rows.slice(0, limit);
 
@@ -276,7 +334,7 @@ function renderFlights() {
   list.innerHTML = rows
     .map(
       (f) => `
-    <div class="flight-card">
+    <div class="flight-card${isFlightPast(f) ? " departed" : ""}">
       <div class="top">
         <span class="flight-no">${f.flightNo || "-"}</span>
         <span class="badge ${f.status}">${STATUS_LABEL[f.status] || f.statusText || "-"}</span>
