@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>東亞颱風監測</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <h1>東亞颱風監測</h1>
+      <p class="sub">颱風動態 · 航班起降</p>
+    </div>
+    <div class="meta">
+      <span id="lastUpdate">更新中…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>活躍颱風</h2>
+        <ul id="typhoonList" class="typhoon-list"></ul>
+      </section>
+      <section class="panel info-panel" id="typhoonInfo">
+        <p class="muted">請選擇颱風</p>
+      </section>
+    </aside>
+
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="layer-toggles">
+        <label><input type="checkbox" id="toggleTrack" checked /> 路徑</label>
+        <label><input type="checkbox" id="toggleWind" checked /> 暴風圈</label>
+        <label><input type="checkbox" id="toggleSatellite" /> 衛星雲圖</label>
+      </div>
+    </section>
+  </main>
+
+  <section class="flights-section">
+    <div class="flights-header">
+      <h2>航班狀態</h2>
+      <form id="flightSearchForm" class="flight-search" autocomplete="off">
+        <label>
+          <span>航空公司代碼</span>
+          <input type="text" id="searchAirline" placeholder="例：5J" maxlength="8" />
+        </label>
+        <label>
+          <span>班次</span>
+          <input type="text" id="searchNumber" placeholder="例：310" maxlength="8" />
+        </label>
+        <button type="submit" class="btn-search">查詢</button>
+        <button type="button" id="searchClear" class="btn-clear">清除</button>
+      </form>
+      <div class="filters">
+        <div class="airport-tabs" id="airportTabs"></div>
+        <select id="statusFilter">
+          <option value="all">全部狀態</option>
+          <option value="on_time">準時</option>
+          <option value="delayed">延誤</option>
+          <option value="cancelled">取消</option>
+        </select>
+      </div>
+    </div>
+    <p id="searchHint" class="search-hint muted"></p>
+    <div id="flightList" class="flight-list"></div>
+  </section>
+
+  <footer class="footer">
+    資料來源：中央氣象署、各機場開放資料 · 僅供參考，請以官方公告為準
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/js/app.js?v=4"></script>
+</body>
+</html>

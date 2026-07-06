@@ -1,0 +1,28 @@
+{
+  "_note": "不含臺南機場（TNN）",
+  "TPE": {
+    "name": "桃園國際機場",
+    "departure": "https://odp.taoyuan-airport.com/dataset/2025102001?format=json",
+    "arrival": "https://odp.taoyuan-airport.com/dataset/2025102001?format=json",
+    "note": "單一 JSON 含抵離站，依方向欄位篩選"
+  },
+  "TSA": {
+    "name": "臺北松山機場",
+    "departure": "https://www.tsa.gov.tw/api/publicDataArea/GetFormaterData?id=42879f51-f47f-4d26-8b2b-5535c652cbde",
+    "arrival": "https://www.tsa.gov.tw/api/publicDataArea/GetFormaterData?id=7dc1379a-9485-4491-866d-fc4f9590ffcf"
+  },
+  "KHH": {
+    "name": "高雄國際機場",
+    "departure": "https://www.kia.gov.tw/Announce/NewsArea/InstantSchedule_INTDEP.json",
+    "arrival": "https://www.kia.gov.tw/Announce/NewsArea/InstantSchedule_INTARR.json",
+    "domesticDeparture": "https://www.kia.gov.tw/Announce/NewsArea/InstantSchedule_DOMDEP.json",
+    "domesticArrival": "https://www.kia.gov.tw/Announce/NewsArea/InstantSchedule_DOMARR.json"
+  },
+  "RMQ": {
+    "name": "臺中國際機場",
+    "departureInternational": "https://www.tca.gov.tw/cht/index.php?act=fids&code=international_l",
+    "arrivalInternational": "https://www.tca.gov.tw/cht/index.php?act=fids&code=international_a",
+    "departureDomestic": "https://www.tca.gov.tw/cht/index.php?act=fids&code=domestic_l",
+    "arrivalDomestic": "https://www.tca.gov.tw/cht/index.php?act=fids&code=domestic_a"
+  }
+}

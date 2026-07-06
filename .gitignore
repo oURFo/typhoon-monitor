@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.Python
+*.egg-info/
+dist/
+build/
+scripts/cwa_debug.json
+.DS_Store
