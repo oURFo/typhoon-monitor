@@ -337,15 +337,26 @@ def filter_flights(
     flights: list[dict[str, Any]],
     airline_code: str = "",
     flight_number: str = "",
+    destination: str = "",
 ) -> list[dict[str, Any]]:
-    """依航空公司代碼 + 班次篩選（如 5J + 310 → 5J310）。"""
+    """依目的地、航空公司代碼、班次篩選。"""
+    rows = flights
+    dest_q = destination.strip().lower()
+    if dest_q:
+        rows = [
+            f
+            for f in rows
+            if dest_q in (f.get("destination") or "").lower()
+            or dest_q in (f.get("origin") or "").lower()
+        ]
+
     airline = airline_code.strip().upper()
     number = flight_number.strip()
     if not airline and not number:
-        return flights
+        return rows
 
     matched: list[dict[str, Any]] = []
-    for f in flights:
+    for f in rows:
         fno = (f.get("flightNo") or "").upper().replace(" ", "")
         ac = (f.get("airlineCode") or "").upper()
 

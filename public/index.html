@@ -52,6 +52,10 @@
       <h2>航班狀態</h2>
       <form id="flightSearchForm" class="flight-search" autocomplete="off">
         <label>
+          <span>目的地</span>
+          <input type="text" id="searchDestination" placeholder="例：東京、沖繩" maxlength="32" />
+        </label>
+        <label>
           <span>航空公司代碼</span>
           <input type="text" id="searchAirline" placeholder="例：5J" maxlength="8" />
         </label>
@@ -81,6 +85,6 @@
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/app.js?v=8"></script>
+  <script src="/static/js/app.js?v=9"></script>
 </body>
 </html>

@@ -62,13 +62,14 @@ async def get_flights(
     response: Response,
     airline: str = "",
     number: str = "",
+    destination: str = "",
 ) -> dict:
     """本機除錯用；正式網站前端直接讀 GitHub 上的 data/flights.json。"""
     response.headers["Cache-Control"] = "no-store"
     snapshot = flights.load_flights_snapshot()
     rows = snapshot.get("flights", [])
-    if airline.strip() or number.strip():
-        rows = flights.filter_flights(rows, airline, number)
+    if airline.strip() or number.strip() or destination.strip():
+        rows = flights.filter_flights(rows, airline, number, destination)
     return {
         "updatedAt": snapshot.get("updatedAt"),
         "airports": snapshot.get("airports", []),

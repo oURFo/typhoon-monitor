@@ -9,7 +9,9 @@ const state = {
   searchActive: false,
   searchAirline: "",
   searchNumber: "",
+  searchDestination: "",
   allFlights: [],
+  cacheHint: "",
 };
 
 let map;
@@ -254,9 +256,16 @@ function renderFlights() {
   rows = rows.slice(0, limit);
 
   if (state.searchActive) {
-    hint.textContent = `查詢 ${state.searchAirline || "—"}${state.searchNumber || ""} · 共 ${total} 筆`;
+    const parts = [];
+    if (state.searchDestination) parts.push(`目的地「${state.searchDestination}」`);
+    if (state.searchAirline || state.searchNumber) {
+      parts.push(`${state.searchAirline || "—"}${state.searchNumber || ""}`);
+    }
+    hint.textContent = `查詢 ${parts.join(" · ")} · 共 ${total} 筆`;
   } else {
-    hint.textContent = total > limit ? `顯示前 ${limit} 筆，共 ${total} 筆（可用上方查詢）` : "";
+    const browse =
+      total > limit ? `顯示前 ${limit} 筆，共 ${total} 筆（可用上方查詢）` : "";
+    hint.textContent = [state.cacheHint, browse].filter(Boolean).join(" · ");
   }
 
   if (!rows.length) {
@@ -282,9 +291,10 @@ function renderFlights() {
 }
 
 async function searchFlights() {
+  const destination = document.getElementById("searchDestination").value.trim();
   const airline = document.getElementById("searchAirline").value.trim();
   const number = document.getElementById("searchNumber").value.trim();
-  if (!airline && !number) {
+  if (!destination && !airline && !number) {
     state.searchActive = false;
     state.allFlights = [];
     await loadFlights();
@@ -294,18 +304,25 @@ async function searchFlights() {
     await loadFlights();
   }
   state.searchActive = true;
+  state.searchDestination = destination;
   state.searchAirline = airline.toUpperCase();
   state.searchNumber = number;
-  state.flights = filterFlightsLocal(state.allFlights, airline, number);
+  state.flights = filterFlightsLocal(state.allFlights, {
+    destination,
+    airline,
+    number,
+  });
   state.airportFilter = "all";
   renderAirportTabs();
   renderFlights();
 }
 
 function clearFlightSearch() {
+  document.getElementById("searchDestination").value = "";
   document.getElementById("searchAirline").value = "";
   document.getElementById("searchNumber").value = "";
   state.searchActive = false;
+  state.searchDestination = "";
   state.searchAirline = "";
   state.searchNumber = "";
   state.allFlights = [];
@@ -370,20 +387,30 @@ async function fetchFlightsPayload() {
   }
 }
 
-function filterFlightsLocal(flights, airlineCode, flightNumber) {
-  const airline = (airlineCode || "").trim().toUpperCase();
-  const number = (flightNumber || "").trim();
-  if (!airline && !number) return flights;
+function filterFlightsLocal(flights, { destination = "", airline = "", number = "" } = {}) {
+  let rows = flights;
+  const destQ = destination.trim().toLowerCase();
+  if (destQ) {
+    rows = rows.filter((f) => {
+      const dest = (f.destination || "").toLowerCase();
+      const orig = (f.origin || "").toLowerCase();
+      return dest.includes(destQ) || orig.includes(destQ);
+    });
+  }
 
-  return flights.filter((f) => {
+  const airlineCode = airline.trim().toUpperCase();
+  const flightNum = number.trim();
+  if (!airlineCode && !flightNum) return rows;
+
+  return rows.filter((f) => {
     const fno = (f.flightNo || "").toUpperCase().replace(/\s/g, "");
     const ac = (f.airlineCode || "").toUpperCase();
-    if (airline && number) {
-      const target = `${airline}${number}`;
-      return fno === target || (fno.startsWith(airline) && fno.endsWith(number));
+    if (airlineCode && flightNum) {
+      const target = `${airlineCode}${flightNum}`;
+      return fno === target || (fno.startsWith(airlineCode) && fno.endsWith(flightNum));
     }
-    if (airline) return ac === airline || fno.startsWith(airline);
-    return fno.endsWith(number) || ` ${fno}`.includes(` ${number}`);
+    if (airlineCode) return ac === airlineCode || fno.startsWith(airlineCode);
+    return fno.endsWith(flightNum) || ` ${fno}`.includes(` ${flightNum}`);
   });
 }
 
@@ -428,7 +455,8 @@ async function loadFlights() {
         code,
         name: AIRPORT_LABEL[code] || code,
       }));
-  document.getElementById("searchHint").textContent = formatFlightCacheHint(data);
+  state.cacheHint = formatFlightCacheHint(data);
+  document.getElementById("searchHint").textContent = state.cacheHint;
   renderAirportTabs();
   renderFlights();
 }

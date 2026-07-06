@@ -215,6 +215,11 @@ body {
   text-transform: uppercase;
 }
 
+.flight-search input#searchDestination {
+  width: 9rem;
+  text-transform: none;
+}
+
 .btn-search,
 .btn-clear {
   border-radius: 6px;
