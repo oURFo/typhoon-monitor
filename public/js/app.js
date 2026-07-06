@@ -9,6 +9,7 @@ const state = {
   searchActive: false,
   searchAirline: "",
   searchNumber: "",
+  allFlights: [],
 };
 
 let map;
@@ -260,20 +261,17 @@ async function searchFlights() {
   const number = document.getElementById("searchNumber").value.trim();
   if (!airline && !number) {
     state.searchActive = false;
+    state.allFlights = [];
     await loadFlights();
     return;
   }
-  const params = new URLSearchParams();
-  if (airline) params.set("airline", airline);
-  if (number) params.set("number", number);
-  const res = await fetch(`/api/flights?${params}`);
-  if (!res.ok) throw new Error("航班查詢失敗");
-  const data = await res.json();
-  state.flights = data.flights || [];
-  state.airports = data.airports || [];
+  if (!state.allFlights.length) {
+    await loadFlights();
+  }
   state.searchActive = true;
   state.searchAirline = airline.toUpperCase();
   state.searchNumber = number;
+  state.flights = filterFlightsLocal(state.allFlights, airline, number);
   state.airportFilter = "all";
   renderAirportTabs();
   renderFlights();
@@ -285,6 +283,7 @@ function clearFlightSearch() {
   state.searchActive = false;
   state.searchAirline = "";
   state.searchNumber = "";
+  state.allFlights = [];
   loadFlights();
 }
 
@@ -302,33 +301,59 @@ async function loadTyphoons() {
   updateSatelliteLayer();
 }
 
+const GITHUB_REPO = "oURFo/typhoon-monitor";
+const GITHUB_BRANCH = "main";
+
+function flightsDataUrl() {
+  const local =
+    location.hostname === "localhost" || location.hostname === "127.0.0.1";
+  if (local) return "/data/flights.json";
+  return `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${GITHUB_BRANCH}/data/flights.json`;
+}
+
+function filterFlightsLocal(flights, airlineCode, flightNumber) {
+  const airline = (airlineCode || "").trim().toUpperCase();
+  const number = (flightNumber || "").trim();
+  if (!airline && !number) return flights;
+
+  return flights.filter((f) => {
+    const fno = (f.flightNo || "").toUpperCase().replace(/\s/g, "");
+    const ac = (f.airlineCode || "").toUpperCase();
+    if (airline && number) {
+      const target = `${airline}${number}`;
+      return fno === target || (fno.startsWith(airline) && fno.endsWith(number));
+    }
+    if (airline) return ac === airline || fno.startsWith(airline);
+    return fno.endsWith(number) || ` ${fno}`.includes(` ${number}`);
+  });
+}
+
 function formatFlightCacheHint(data) {
-  if (!data.cacheReady) {
-    return data.refreshing
-      ? "航班資料首次準備中（背景更新），請稍候再重整…"
-      : "航班快取尚未就緒，請稍候再重整…";
-  }
   const parts = [];
   if (data.updatedAt) {
     parts.push(
-      "航班資料 " + new Date(data.updatedAt).toLocaleString("zh-TW") + " 更新（每 10 分鐘）"
+      "航班資料 " +
+        new Date(data.updatedAt).toLocaleString("zh-TW") +
+        " 更新（GitHub 每 10 分鐘）"
     );
   }
-  if (data.refreshing) parts.push("背景更新中");
   const failed = (data.airports || []).filter((a) => a.error);
   if (failed.length) {
-    parts.push(failed.map((a) => `${AIRPORT_LABEL[a.code] || a.code}：${a.error}`).join(" · "));
+    parts.push(
+      failed.map((a) => `${AIRPORT_LABEL[a.code] || a.code}：${a.error}`).join(" · ")
+    );
   }
   return parts.join(" · ");
 }
 
 async function loadFlights() {
   if (state.searchActive) return;
-  const res = await fetch("/api/flights");
+  const res = await fetch(flightsDataUrl());
   if (!res.ok) throw new Error("航班資料載入失敗");
   const data = await res.json();
 
-  state.flights = data.flights || [];
+  state.allFlights = data.flights || [];
+  state.flights = state.allFlights;
   const fromApi = data.airports || [];
   state.airports = fromApi.length
     ? fromApi.map((a) => ({

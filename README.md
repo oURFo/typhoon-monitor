@@ -7,6 +7,7 @@
 - 東亞活躍颱風列表與地圖（路徑、暴風圈、衛星圖層）
 - 航班狀態：依**航空公司代碼 + 班次**查詢（例：`5J` + `310` → `5J310`）
 - 涵蓋機場：桃園、松山、高雄、臺中（不含臺南）
+- 航班資料由 **GitHub Actions 每 10 分鐘**抓取並寫入 `data/flights.json`，網站直接讀取 GitHub 上的檔案
 
 ## 本機開發
 
@@ -49,13 +50,27 @@ git push -u origin main
 - `https://你的網址/api/health`
 - `https://你的網址/api/flights?airline=5J&number=310`
 
+## 航班資料更新機制
+
+1. **GitHub Actions**（`.github/workflows/refresh-flights.yml`）每 10 分鐘執行 `scripts/fetch_flights_snapshot.py`
+2. 腳本抓取各機場開放資料，寫入 **`data/flights.json`** 並 push 回 GitHub
+3. 前端從 jsDelivr 讀取：`https://cdn.jsdelivr.net/gh/oURFo/typhoon-monitor@main/data/flights.json`
+4. Render 僅負責颱風 API（需 CWA 金鑰）；`data/**` 變更不觸發 Render 重新部署
+
+手動更新：GitHub → Actions → **Refresh flights** → Run workflow
+
+本機產生快照：
+
+```bat
+python scripts\fetch_flights_snapshot.py
+```
+
 ## API
 
 | 端點 | 說明 |
 |------|------|
 | `GET /api/typhoons` | 颱風列表與路徑 |
-| `GET /api/flights` | 全部航班（預設列表） |
-| `GET /api/flights?airline=5J&number=310` | 依代碼+班次查詢 |
+| `GET /api/flights` | 本機除錯：讀取 repo 內 `data/flights.json` |
 
 ## 環境變數
 
