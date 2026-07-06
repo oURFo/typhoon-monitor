@@ -20,13 +20,21 @@
 
   <main class="layout">
     <aside class="sidebar">
-      <section class="panel">
-        <h2>活躍颱風</h2>
-        <ul id="typhoonList" class="typhoon-list"></ul>
-      </section>
-      <section class="panel info-panel" id="typhoonInfo">
-        <p class="muted">請選擇颱風</p>
-      </section>
+      <details class="typhoon-panel" id="typhoonPanel">
+        <summary class="typhoon-summary" id="typhoonSummary">
+          <span class="typhoon-summary-title">颱風資訊</span>
+          <span class="typhoon-summary-hint" id="typhoonSummaryHint">載入中…</span>
+        </summary>
+        <div class="typhoon-panel-body">
+          <section class="panel">
+            <h2>活躍颱風</h2>
+            <ul id="typhoonList" class="typhoon-list"></ul>
+          </section>
+          <section class="panel info-panel" id="typhoonInfo">
+            <p class="muted">請選擇颱風</p>
+          </section>
+        </div>
+      </details>
     </aside>
 
     <section class="map-wrap">
@@ -73,6 +81,6 @@
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/app.js?v=7"></script>
+  <script src="/static/js/app.js?v=8"></script>
 </body>
 </html>

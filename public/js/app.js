@@ -143,11 +143,35 @@ function typhoonLabel(t) {
   return t.nameZh || t.nameEn || "未命名";
 }
 
+function initTyphoonPanel() {
+  const panel = document.getElementById("typhoonPanel");
+  if (!panel) return;
+  const mq = window.matchMedia("(max-width: 900px)");
+  const apply = () => {
+    if (mq.matches) panel.removeAttribute("open");
+    else panel.setAttribute("open", "");
+  };
+  apply();
+  mq.addEventListener("change", apply);
+}
+
+function updateTyphoonSummary() {
+  const hint = document.getElementById("typhoonSummaryHint");
+  if (!hint) return;
+  const t = state.typhoons.find((x) => x.id === state.selectedId);
+  if (t) {
+    hint.textContent = typhoonLabel(t);
+    return;
+  }
+  hint.textContent = state.typhoons.length ? "點開查看" : "目前無活躍颱風";
+}
+
 function renderTyphoonList() {
   const list = document.getElementById("typhoonList");
   list.innerHTML = "";
   if (!state.typhoons.length) {
-    list.innerHTML = '<li class="muted">目前無活躍熱帶氣旋（若持續為空請重啟 start.bat）</li>';
+    list.innerHTML = '<li class="muted">目前無活躍熱帶氣旋</li>';
+    updateTyphoonSummary();
     return;
   }
   state.typhoons.forEach((t) => {
@@ -157,6 +181,7 @@ function renderTyphoonList() {
     li.onclick = () => selectTyphoon(t.id);
     list.appendChild(li);
   });
+  updateTyphoonSummary();
 }
 
 function renderTyphoonInfo(typhoon) {
@@ -308,7 +333,41 @@ function flightsDataUrl() {
   const local =
     location.hostname === "localhost" || location.hostname === "127.0.0.1";
   if (local) return "/data/flights.json";
-  return `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${GITHUB_BRANCH}/data/flights.json`;
+  const bust = Math.floor(Date.now() / 600000);
+  return `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${GITHUB_BRANCH}/data/flights.json?t=${bust}`;
+}
+
+async function fetchFlightsPayload() {
+  const res = await fetch(flightsDataUrl());
+  if (!res.ok) throw new Error("航班資料載入失敗");
+  const data = await res.json();
+  const tpeCount = (data.flights || []).filter((f) => f.airport === "TPE").length;
+  if (tpeCount > 0) return data;
+
+  const tpeUrl = flightsDataUrl().replace("flights.json", "tpe-flights.json");
+  try {
+    const tpeRes = await fetch(tpeUrl);
+    if (!tpeRes.ok) return data;
+    const tpeData = await tpeRes.json();
+    const tpeRows = tpeData.flights || [];
+    if (!tpeRows.length) return data;
+    const others = (data.flights || []).filter((f) => f.airport !== "TPE");
+    const airports = (data.airports || []).filter((a) => a.code !== "TPE");
+    airports.push({
+      code: "TPE",
+      name: "桃園國際機場",
+      stale: true,
+      error: "合併 tpe-flights.json 快取",
+    });
+    return {
+      ...data,
+      flights: [...others, ...tpeRows],
+      airports,
+      count: others.length + tpeRows.length,
+    };
+  } catch {
+    return data;
+  }
 }
 
 function filterFlightsLocal(flights, airlineCode, flightNumber) {
@@ -337,7 +396,13 @@ function formatFlightCacheHint(data) {
         " 更新（GitHub 每 10 分鐘）"
     );
   }
-  const failed = (data.airports || []).filter((a) => a.error);
+  const stale = (data.airports || []).filter((a) => a.stale);
+  if (stale.length) {
+    parts.push(
+      stale.map((a) => `${AIRPORT_LABEL[a.code] || a.code}：快取資料`).join(" · ")
+    );
+  }
+  const failed = (data.airports || []).filter((a) => a.error && !a.stale);
   if (failed.length) {
     parts.push(
       failed.map((a) => `${AIRPORT_LABEL[a.code] || a.code}：${a.error}`).join(" · ")
@@ -348,9 +413,7 @@ function formatFlightCacheHint(data) {
 
 async function loadFlights() {
   if (state.searchActive) return;
-  const res = await fetch(flightsDataUrl());
-  if (!res.ok) throw new Error("航班資料載入失敗");
-  const data = await res.json();
+  const data = await fetchFlightsPayload();
 
   state.allFlights = data.flights || [];
   state.flights = state.allFlights;
@@ -412,6 +475,7 @@ document.getElementById("toggleWind").addEventListener("change", () => {
 document.getElementById("toggleSatellite").addEventListener("change", updateSatelliteLayer);
 
 initMap();
+initTyphoonPanel();
 refresh();
 setInterval(loadTyphoons, 5 * 60 * 1000);
 setInterval(() => {

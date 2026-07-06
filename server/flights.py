@@ -278,15 +278,13 @@ def _flights_by_airport(flights: list[dict[str, Any]]) -> dict[str, list[dict[st
     return grouped
 
 
-async def fetch_all_flights(*, use_stale_fallback: bool = False) -> dict[str, Any]:
-    """依序抓取各機場；use_stale_fallback 僅供本機除錯。"""
+async def fetch_all_flights(
+    *,
+    stale_by_airport: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """依序抓取各機場；失敗時可沿用 stale_by_airport 的舊資料。"""
     config = load_airport_config()
-    prev_by_airport: dict[str, list[dict[str, Any]]] = {}
-    if use_stale_fallback:
-        from . import flights_cache
-
-        prev = flights_cache.get_snapshot(allow_stale=True) or {"flights": []}
-        prev_by_airport = _flights_by_airport(prev.get("flights", []))
+    prev_by_airport = stale_by_airport or {}
 
     airport_map = {
         code: airport
@@ -304,10 +302,10 @@ async def fetch_all_flights(*, use_stale_fallback: bool = False) -> dict[str, An
         bundle = await _fetch_airport_bundle(code, airport)
         meta: dict[str, Any] = {"code": code, "name": bundle["name"]}
 
-        if bundle["error"] and code in prev_by_airport:
+        if bundle["error"] and code in prev_by_airport and prev_by_airport[code]:
             rows = prev_by_airport[code]
             meta["stale"] = True
-            meta["error"] = bundle["error"]
+            meta["error"] = f"{bundle['error']}（顯示快取）"
         elif bundle["error"]:
             meta["error"] = bundle["error"]
             rows = []

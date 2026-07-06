@@ -51,9 +51,50 @@ body {
 .sidebar {
   border-right: 1px solid var(--border);
   padding: 0.75rem;
+}
+
+.typhoon-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.typhoon-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  user-select: none;
+}
+
+.typhoon-summary::-webkit-details-marker { display: none; }
+
+.typhoon-summary-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+  text-align: right;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.typhoon-panel-body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+.typhoon-panel-body .panel {
+  margin: 0;
 }
 
 .panel {
@@ -279,5 +320,18 @@ select {
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+  }
+  .map-wrap { min-height: 55vh; }
+  #map { min-height: 55vh; }
+  .typhoon-panel:not([open]) .typhoon-panel-body { display: none; }
+  .info-panel .row { font-size: 0.85rem; }
+}
+
+@media (min-width: 901px) {
+  .typhoon-panel > .typhoon-summary { display: none; }
+  .typhoon-panel-body { padding: 0.75rem; }
 }
