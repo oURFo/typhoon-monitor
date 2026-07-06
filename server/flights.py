@@ -20,7 +20,9 @@ FETCH_HEADERS = {
 
 AIRPORT_TIMEOUT = 45.0
 TPE_TIMEOUT = 120.0
-TPE_FETCH_RETRIES = 2
+TPE_FETCH_RETRIES = 3
+# 桃園資料量大，放最後抓；其他機場先完成以確保快取有內容
+AIRPORT_FETCH_ORDER = ("TSA", "KHH", "RMQ", "TPE")
 
 CANCEL_KEYWORDS = ("取消", "cancel", "canceled", "cancelled")
 DELAY_KEYWORDS = ("延誤", "delay", "delayed", "晚")
@@ -268,27 +270,52 @@ async def _fetch_airport_bundle(code: str, airport: dict[str, Any]) -> dict[str,
         }
 
 
+def _flights_by_airport(flights: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in flights:
+        code = row.get("airport", "")
+        grouped.setdefault(code, []).append(row)
+    return grouped
+
+
 async def fetch_all_flights() -> dict[str, Any]:
+    """依序抓取各機場（避免雲端並行連線逾時），失敗時沿用舊資料。"""
+    from . import flights_cache
+
     config = load_airport_config()
-    codes = [
-        (code, airport)
+    prev = flights_cache.get_snapshot(allow_stale=True) or {"flights": [], "airports": []}
+    prev_by_airport = _flights_by_airport(prev.get("flights", []))
+
+    airport_map = {
+        code: airport
         for code, airport in config.items()
         if not code.startswith("_") and isinstance(airport, dict)
-    ]
-    bundles = await asyncio.gather(
-        *[_fetch_airport_bundle(code, airport) for code, airport in codes]
-    )
-    result: dict[str, Any] = {"airports": [], "flights": []}
-    for bundle in bundles:
-        airport_meta: dict[str, Any] = {
-            "code": bundle["code"],
-            "name": bundle["name"],
-        }
-        if bundle["error"]:
-            airport_meta["error"] = bundle["error"]
-        result["airports"].append(airport_meta)
-        result["flights"].extend(bundle["flights"])
-    return result
+    }
+
+    all_flights: list[dict[str, Any]] = []
+    airports_meta: list[dict[str, Any]] = []
+
+    for code in AIRPORT_FETCH_ORDER:
+        airport = airport_map.get(code)
+        if not airport:
+            continue
+        bundle = await _fetch_airport_bundle(code, airport)
+        meta: dict[str, Any] = {"code": code, "name": bundle["name"]}
+
+        if bundle["error"] and code in prev_by_airport:
+            rows = prev_by_airport[code]
+            meta["stale"] = True
+            meta["error"] = bundle["error"]
+        elif bundle["error"]:
+            meta["error"] = bundle["error"]
+            rows = []
+        else:
+            rows = bundle["flights"]
+
+        airports_meta.append(meta)
+        all_flights.extend(rows)
+
+    return {"airports": airports_meta, "flights": all_flights}
 
 
 async def fetch_airport(code: str) -> dict[str, Any]:
@@ -338,16 +365,40 @@ def filter_flights(
     return matched
 
 
+def _empty_flights_response() -> dict[str, Any]:
+    from . import flights_cache
+
+    return {
+        "airports": [],
+        "flights": [],
+        "cacheReady": False,
+        "refreshing": flights_cache.is_refreshing(),
+        "lastError": flights_cache.get_last_error(),
+    }
+
+
+def _snapshot_response(snapshot: dict[str, Any]) -> dict[str, Any]:
+    from . import flights_cache
+
+    return {
+        "airports": snapshot.get("airports", []),
+        "flights": snapshot.get("flights", []),
+        "updatedAt": snapshot.get("updatedAt"),
+        "cacheReady": True,
+        "refreshing": flights_cache.is_refreshing(),
+        "lastError": flights_cache.get_last_error(),
+    }
+
+
 async def search_flights(airline_code: str = "", flight_number: str = "") -> dict[str, Any]:
     from . import flights_cache
 
-    data = flights_cache.get_cached_list()
-    if not data:
-        data = await fetch_all_flights()
-        flights_cache.set_list_cache(data)
-    hits = filter_flights(data["flights"], airline_code, flight_number)
+    snapshot = flights_cache.get_snapshot(allow_stale=True)
+    if not snapshot:
+        return {**_empty_flights_response(), "query": {}, "count": 0}
+    hits = filter_flights(snapshot["flights"], airline_code, flight_number)
     return {
-        "airports": data["airports"],
+        **_snapshot_response(snapshot),
         "flights": hits,
         "query": {"airlineCode": airline_code.strip(), "flightNumber": flight_number.strip()},
         "count": len(hits),
@@ -357,20 +408,38 @@ async def search_flights(airline_code: str = "", flight_number: str = "") -> dic
 async def get_flights_cached() -> dict[str, Any]:
     from . import flights_cache
 
-    cached = flights_cache.get_cached_list()
-    if cached:
-        return cached
-    data = await fetch_all_flights()
-    flights_cache.set_list_cache(data)
-    return data
+    snapshot = flights_cache.get_snapshot(allow_stale=True)
+    if snapshot:
+        return _snapshot_response(snapshot)
+    return _empty_flights_response()
 
 
-async def get_airport_cached(code: str) -> dict[str, Any]:
+async def get_airport_from_cache(code: str) -> dict[str, Any]:
     from . import flights_cache
 
-    cached = flights_cache.get_cached_airport(code)
-    if cached:
-        return cached
-    data = await fetch_airport(code)
-    flights_cache.set_airport_cache(code, data)
-    return data
+    code = code.upper()
+    snapshot = flights_cache.get_snapshot(allow_stale=True)
+    if not snapshot:
+        return {
+            "airport": code,
+            "name": code,
+            "flights": [],
+            "count": 0,
+            "cacheReady": False,
+            "refreshing": flights_cache.is_refreshing(),
+            "lastError": flights_cache.get_last_error(),
+        }
+
+    rows = [f for f in snapshot.get("flights", []) if f.get("airport") == code]
+    meta = next((a for a in snapshot.get("airports", []) if a.get("code") == code), {})
+    return {
+        "airport": code,
+        "name": meta.get("name", code),
+        "flights": rows,
+        "count": len(rows),
+        "error": meta.get("error"),
+        "stale": meta.get("stale", False),
+        "cacheReady": True,
+        "updatedAt": snapshot.get("updatedAt"),
+        "refreshing": flights_cache.is_refreshing(),
+    }

@@ -302,48 +302,45 @@ async function loadTyphoons() {
   updateSatelliteLayer();
 }
 
+function formatFlightCacheHint(data) {
+  if (!data.cacheReady) {
+    return data.refreshing
+      ? "航班資料首次準備中（背景更新），請稍候再重整…"
+      : "航班快取尚未就緒，請稍候再重整…";
+  }
+  const parts = [];
+  if (data.updatedAt) {
+    parts.push(
+      "航班資料 " + new Date(data.updatedAt).toLocaleString("zh-TW") + " 更新（每 10 分鐘）"
+    );
+  }
+  if (data.refreshing) parts.push("背景更新中");
+  const failed = (data.airports || []).filter((a) => a.error);
+  if (failed.length) {
+    parts.push(failed.map((a) => `${AIRPORT_LABEL[a.code] || a.code}：${a.error}`).join(" · "));
+  }
+  return parts.join(" · ");
+}
+
 async function loadFlights() {
   if (state.searchActive) return;
-  document.getElementById("searchHint").textContent = "航班載入中…";
-  state.flights = [];
-  state.airports = AIRPORT_CODES.map((code) => ({
-    code,
-    name: AIRPORT_LABEL[code] || code,
-  }));
-  renderAirportTabs();
-  renderFlights();
+  const res = await fetch("/api/flights");
+  if (!res.ok) throw new Error("航班資料載入失敗");
+  const data = await res.json();
 
-  const results = await Promise.allSettled(
-    AIRPORT_CODES.map(async (code) => {
-      const res = await fetch(`/api/flights/airport/${code}`);
-      if (!res.ok) throw new Error(`${code} 載入失敗`);
-      return res.json();
-    })
-  );
-
-  const merged = [];
-  const airports = [];
-  results.forEach((result, i) => {
-    const code = AIRPORT_CODES[i];
-    if (result.status === "fulfilled") {
-      const data = result.value;
-      airports.push({
-        code: data.airport || code,
-        name: data.name || AIRPORT_LABEL[code],
-        error: data.error || null,
-      });
-      merged.push(...(data.flights || []));
-    } else {
-      airports.push({
+  state.flights = data.flights || [];
+  const fromApi = data.airports || [];
+  state.airports = fromApi.length
+    ? fromApi.map((a) => ({
+        code: a.code,
+        name: AIRPORT_LABEL[a.code] || a.name || a.code,
+        error: a.error || null,
+      }))
+    : AIRPORT_CODES.map((code) => ({
         code,
-        name: AIRPORT_LABEL[code],
-        error: result.reason?.message || "載入失敗",
-      });
-    }
-  });
-
-  state.flights = merged;
-  state.airports = airports;
+        name: AIRPORT_LABEL[code] || code,
+      }));
+  document.getElementById("searchHint").textContent = formatFlightCacheHint(data);
   renderAirportTabs();
   renderFlights();
 }
@@ -355,7 +352,7 @@ async function refresh() {
       await loadFlights();
     }
     document.getElementById("lastUpdate").textContent =
-      "最後更新 " + new Date().toLocaleString("zh-TW");
+      "颱風 " + new Date().toLocaleString("zh-TW") + " 更新";
   } catch (err) {
     document.getElementById("lastUpdate").textContent = "更新失敗：" + err.message;
   }
@@ -391,4 +388,7 @@ document.getElementById("toggleSatellite").addEventListener("change", updateSate
 
 initMap();
 refresh();
-setInterval(refresh, 5 * 60 * 1000);
+setInterval(loadTyphoons, 5 * 60 * 1000);
+setInterval(() => {
+  if (!state.searchActive) loadFlights();
+}, 60 * 1000);

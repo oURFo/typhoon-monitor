@@ -1,69 +1,84 @@
-"""航班資料快取（Render 等雲端環境避免每次請求逾時）。"""
+"""航班資料快取：背景每 10 分鐘更新，API 只讀快取。"""
 
 from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable
 
-CACHE_TTL_SEC = 300
-_list_cache: dict[str, Any] | None = None
-_list_cache_at: float = 0.0
-_airport_cache: dict[str, tuple[float, dict[str, Any]]] = {}
-_warm_lock = asyncio.Lock()
-_warming = False
-
-
-def _is_fresh(ts: float) -> bool:
-    return (time.time() - ts) < CACHE_TTL_SEC
+REFRESH_INTERVAL_SEC = 600
+_snapshot: dict[str, Any] | None = None
+_snapshot_at: float = 0.0
+_refresh_lock = asyncio.Lock()
+_refreshing = False
+_last_error: str | None = None
+_scheduler_task: asyncio.Task | None = None
 
 
-def get_cached_list() -> dict[str, Any] | None:
-    if _list_cache and _is_fresh(_list_cache_at):
-        return _list_cache
+def is_refreshing() -> bool:
+    return _refreshing
+
+
+def get_last_error() -> str | None:
+    return _last_error
+
+
+def get_snapshot(*, allow_stale: bool = True) -> dict[str, Any] | None:
+    if _snapshot is None:
+        return None
+    if allow_stale:
+        return _snapshot
+    age = time.time() - _snapshot_at
+    if age < REFRESH_INTERVAL_SEC:
+        return _snapshot
     return None
 
 
-def get_cached_airport(code: str) -> dict[str, Any] | None:
-    entry = _airport_cache.get(code.upper())
-    if entry and _is_fresh(entry[0]):
-        return entry[1]
-    return None
+def set_snapshot(data: dict[str, Any]) -> None:
+    global _snapshot, _snapshot_at, _last_error
+    _snapshot = {
+        **data,
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "cacheReady": True,
+    }
+    _snapshot_at = time.time()
+    _last_error = None
 
 
-def set_list_cache(data: dict[str, Any]) -> None:
-    global _list_cache, _list_cache_at
-    _list_cache = data
-    _list_cache_at = time.time()
+def snapshot_age_sec() -> float | None:
+    if _snapshot is None:
+        return None
+    return time.time() - _snapshot_at
 
 
-def set_airport_cache(code: str, data: dict[str, Any]) -> None:
-    _airport_cache[code.upper()] = (time.time(), data)
+async def run_refresh(fetch_fn: Callable[[], Awaitable[dict[str, Any]]]) -> bool:
+    """執行一次完整更新；失敗時保留舊快取。"""
+    global _refreshing, _last_error
+    async with _refresh_lock:
+        if _refreshing:
+            return False
+        _refreshing = True
+        try:
+            data = await fetch_fn()
+            set_snapshot(data)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            _last_error = str(exc).strip() or type(exc).__name__
+            return False
+        finally:
+            _refreshing = False
 
 
-async def warm_cache(fetch_all, fetch_airport=None) -> None:
-    """背景預熱完整航班快取。"""
-    global _warming
-    async with _warm_lock:
-        if _warming or get_cached_list():
-            return
-        _warming = True
-    try:
-        if fetch_airport:
-            asyncio.create_task(_warm_tpe_only(fetch_airport))
-        data = await fetch_all()
-        set_list_cache(data)
-    finally:
-        _warming = False
+async def _refresh_loop(fetch_fn: Callable[[], Awaitable[dict[str, Any]]]) -> None:
+    while True:
+        await run_refresh(fetch_fn)
+        await asyncio.sleep(REFRESH_INTERVAL_SEC)
 
 
-async def _warm_tpe_only(fetch_airport) -> None:
-    """桃園資料較大，獨立預熱避免拖慢整體快取。"""
-    if get_cached_airport("TPE"):
-        return
-    try:
-        data = await fetch_airport("TPE")
-        if data.get("count"):
-            set_airport_cache("TPE", data)
-    except Exception:
-        pass
+def start_scheduler(fetch_fn: Callable[[], Awaitable[dict[str, Any]]]) -> asyncio.Task:
+    global _scheduler_task
+    if _scheduler_task and not _scheduler_task.done():
+        return _scheduler_task
+    _scheduler_task = asyncio.create_task(_refresh_loop(fetch_fn))
+    return _scheduler_task

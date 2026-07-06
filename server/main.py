@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +19,7 @@ load_dotenv(ROOT / ".env")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    asyncio.create_task(flights_cache.warm_cache(flights.fetch_all_flights, flights.fetch_airport))
+    flights_cache.start_scheduler(flights.fetch_all_flights)
     yield
 
 
@@ -75,7 +74,6 @@ async def get_flights(
             data = await flights.search_flights(airline, number)
         else:
             data = await flights.get_flights_cached()
-        data["updatedAt"] = datetime.now(timezone.utc).isoformat()
         return data
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -85,9 +83,7 @@ async def get_flights(
 async def get_flights_by_airport(code: str, response: Response) -> dict:
     response.headers["Cache-Control"] = "no-store"
     try:
-        data = await flights.get_airport_cached(code)
-        data["updatedAt"] = datetime.now(timezone.utc).isoformat()
-        return data
+        return await flights.get_airport_from_cache(code)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
