@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-06T10:44:48.557001+00:00",
+  "updatedAt": "2026-07-06T10:59:42.018554+00:00",
   "flights": [
     {
       "airport": "TPE",
@@ -10945,11 +10945,11 @@
       "destination": "曼谷",
       "origin": "",
       "scheduledTime": "18:50",
-      "estimatedTime": "18:50",
+      "estimatedTime": "18:45",
       "gate": "B4",
       "status": "on_time",
-      "statusText": "",
-      "remark": ""
+      "statusText": "登機結束",
+      "remark": "出發"
     },
     {
       "airport": "TPE",
@@ -12253,7 +12253,7 @@
       "estimatedTime": "18:35",
       "gate": "A2",
       "status": "on_time",
-      "statusText": "最後登機",
+      "statusText": "登機結束",
       "remark": "預計時間變更"
     },
     {
@@ -12298,7 +12298,7 @@
       "estimatedTime": "18:31",
       "gate": "D3",
       "status": "on_time",
-      "statusText": "登機結束",
+      "statusText": "已飛",
       "remark": "出發"
     },
     {
@@ -12718,7 +12718,7 @@
       "estimatedTime": "18:40",
       "gate": "B5",
       "status": "on_time",
-      "statusText": "最後登機",
+      "statusText": "登機結束",
       "remark": ""
     },
     {
@@ -13618,7 +13618,7 @@
       "estimatedTime": "19:20",
       "gate": "C10",
       "status": "on_time",
-      "statusText": "開始登機",
+      "statusText": "最後登機",
       "remark": ""
     },
     {
@@ -13888,7 +13888,7 @@
       "estimatedTime": "18:32",
       "gate": "B1R",
       "status": "on_time",
-      "statusText": "登機結束",
+      "statusText": "已飛",
       "remark": "出發"
     },
     {
@@ -14878,7 +14878,7 @@
       "estimatedTime": "18:55",
       "gate": "A4",
       "status": "on_time",
-      "statusText": "開始登機",
+      "statusText": "最後登機",
       "remark": ""
     },
     {
@@ -15085,11 +15085,11 @@
       "destination": "曼谷",
       "origin": "",
       "scheduledTime": "18:50",
-      "estimatedTime": "18:50",
+      "estimatedTime": "18:45",
       "gate": "B4",
       "status": "on_time",
-      "statusText": "",
-      "remark": ""
+      "statusText": "登機結束",
+      "remark": "出發"
     },
     {
       "airport": "TPE",
@@ -15220,11 +15220,11 @@
       "destination": "曼谷",
       "origin": "",
       "scheduledTime": "18:50",
-      "estimatedTime": "18:50",
+      "estimatedTime": "18:45",
       "gate": "B4",
       "status": "on_time",
-      "statusText": "",
-      "remark": ""
+      "statusText": "登機結束",
+      "remark": "出發"
     },
     {
       "airport": "TPE",
@@ -15523,7 +15523,7 @@
       "estimatedTime": "19:20",
       "gate": "D5",
       "status": "on_time",
-      "statusText": "",
+      "statusText": "開始登機",
       "remark": ""
     },
     {
@@ -15538,7 +15538,7 @@
       "estimatedTime": "18:31",
       "gate": "D3",
       "status": "on_time",
-      "statusText": "登機結束",
+      "statusText": "已飛",
       "remark": "出發"
     },
     {
@@ -16795,11 +16795,11 @@
       "destination": "曼谷",
       "origin": "",
       "scheduledTime": "18:50",
-      "estimatedTime": "18:50",
+      "estimatedTime": "18:45",
       "gate": "B4",
       "status": "on_time",
       "statusText": "登機結束",
-      "remark": ""
+      "remark": "出發"
     },
     {
       "airport": "TPE",
