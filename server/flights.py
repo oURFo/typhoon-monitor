@@ -24,8 +24,9 @@ FETCH_HEADERS = {
 }
 
 AIRPORT_TIMEOUT = 45.0
-TPE_TIMEOUT = 120.0
-TPE_FETCH_RETRIES = 3
+TPE_TIMEOUT = float(os.getenv("TPE_TIMEOUT", "120"))
+TPE_CONNECT_TIMEOUT = float(os.getenv("TPE_CONNECT_TIMEOUT", "90"))
+TPE_FETCH_RETRIES = int(os.getenv("TPE_FETCH_RETRIES", "3"))
 # 桃園資料量大，放最後抓；其他機場先完成以確保快取有內容
 AIRPORT_FETCH_ORDER = ("TSA", "KHH", "RMQ", "TPE")
 
@@ -325,7 +326,15 @@ async def _fetch_json(url: str, *, timeout: float = AIRPORT_TIMEOUT) -> Any:
 
 
 async def _fetch_tpe_csv(url: str) -> list[dict[str, Any]]:
-    async with async_client(timeout=TPE_TIMEOUT) as client:
+    import httpx
+
+    timeout = httpx.Timeout(
+        connect=TPE_CONNECT_TIMEOUT,
+        read=TPE_TIMEOUT,
+        write=30.0,
+        pool=30.0,
+    )
+    async with async_client(timeout=timeout) as client:
         res = await client.get(url, headers=FETCH_HEADERS)
         res.raise_for_status()
         text = res.content.decode("utf-8-sig")
@@ -431,10 +440,12 @@ def _flights_by_airport(flights: list[dict[str, Any]]) -> dict[str, list[dict[st
 async def fetch_all_flights(
     *,
     stale_by_airport: dict[str, list[dict[str, Any]]] | None = None,
+    skip_airports: set[str] | None = None,
 ) -> dict[str, Any]:
     """依序抓取各機場；失敗時可沿用 stale_by_airport 的舊資料。"""
     config = load_airport_config()
     prev_by_airport = stale_by_airport or {}
+    skip = {code.upper() for code in (skip_airports or set())}
 
     airport_map = {
         code: airport
@@ -446,6 +457,8 @@ async def fetch_all_flights(
     airports_meta: list[dict[str, Any]] = []
 
     for code in AIRPORT_FETCH_ORDER:
+        if code in skip:
+            continue
         airport = airport_map.get(code)
         if not airport:
             continue
@@ -455,7 +468,9 @@ async def fetch_all_flights(
         if bundle["error"] and code in prev_by_airport and prev_by_airport[code]:
             rows = prev_by_airport[code]
             meta["stale"] = True
-            meta["error"] = f"{bundle['error']}（顯示快取）"
+            raw_err = str(bundle["error"]).strip()
+            meta["error"] = raw_err
+            meta["lastError"] = raw_err
         elif bundle["error"]:
             meta["error"] = bundle["error"]
             rows = []

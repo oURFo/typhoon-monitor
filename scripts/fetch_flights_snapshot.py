@@ -11,7 +11,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
+from flight_snapshot_merge import attach_tpe_to_payload, load_tpe_snapshot  # noqa: E402
 from server.flights import _flights_by_airport, fetch_all_flights, prepare_snapshot  # noqa: E402
 
 OUTPUT = ROOT / "data" / "flights.json"
@@ -21,20 +23,11 @@ TPE_OUTPUT = ROOT / "data" / "tpe-flights.json"
 def load_stale_by_airport() -> dict[str, list[dict]]:
     grouped: dict[str, list[dict]] = {}
 
-    if TPE_OUTPUT.exists():
-        try:
-            tpe_data = json.loads(TPE_OUTPUT.read_text(encoding="utf-8"))
-            tpe_rows = tpe_data.get("byAirport", {}).get("TPE") or tpe_data.get("flights", [])
-            if tpe_rows:
-                grouped["TPE"] = tpe_rows
-        except json.JSONDecodeError:
-            pass
-
     if OUTPUT.exists():
         try:
             data = json.loads(OUTPUT.read_text(encoding="utf-8"))
             for code, rows in _flights_by_airport(data.get("flights", [])).items():
-                if rows and code not in grouped:
+                if rows and code != "TPE":
                     grouped[code] = rows
         except json.JSONDecodeError:
             pass
@@ -50,20 +43,11 @@ def load_prev_cache_meta() -> dict[str, dict[str, Any]]:
             prev.update(data.get("cacheMeta") or {})
         except json.JSONDecodeError:
             pass
-    if TPE_OUTPUT.exists():
-        try:
-            tpe = json.loads(TPE_OUTPUT.read_text(encoding="utf-8"))
-            tpe_meta = (tpe.get("cacheMeta") or {}).get("TPE")
-            if not tpe_meta and tpe.get("updatedAt"):
-                tpe_meta = {
-                    "cachedAt": tpe.get("updatedAt"),
-                    "lastSuccessAt": tpe.get("updatedAt"),
-                    "failCount": 0,
-                }
-            if tpe_meta:
-                prev["TPE"] = {**prev.get("TPE", {}), **tpe_meta}
-        except json.JSONDecodeError:
-            pass
+    tpe_data = load_tpe_snapshot()
+    if tpe_data:
+        tpe_meta = (tpe_data.get("cacheMeta") or {}).get("TPE")
+        if tpe_meta:
+            prev["TPE"] = {**prev.get("TPE", {}), **tpe_meta}
     return prev
 
 
@@ -76,9 +60,11 @@ def build_cache_meta(
     cache_meta: dict[str, dict[str, Any]] = {}
     for airport in airports_meta:
         code = airport["code"]
+        if code == "TPE":
+            continue
         prev = prev_meta.get(code, {})
         stale = bool(airport.get("stale"))
-        err = airport.get("error")
+        err = airport.get("lastError") or airport.get("error")
         rows = row_counts.get(code, 0)
 
         if stale:
@@ -121,12 +107,11 @@ def build_cache_meta(
 async def main() -> int:
     stale = load_stale_by_airport()
     prev_meta = load_prev_cache_meta()
-    data = await fetch_all_flights(stale_by_airport=stale)
+    data = await fetch_all_flights(stale_by_airport=stale, skip_airports={"TPE"})
     prepared = prepare_snapshot(data.get("flights", []))
     flights = prepared["flights"]
-    total = len(flights)
-    if total == 0:
-        print("ERROR: no flights fetched", file=sys.stderr)
+    if not flights:
+        print("ERROR: no flights fetched (excluding TPE)", file=sys.stderr)
         return 1
 
     now = datetime.now(timezone.utc).isoformat()
@@ -142,42 +127,23 @@ async def main() -> int:
         "byAirportDirection": prepared["byAirportDirection"],
         "byDirection": prepared["byDirection"],
         "cacheMeta": cache_meta,
-        "count": total,
+        "count": len(flights),
     }
+
+    tpe_data = load_tpe_snapshot()
+    if tpe_data and (tpe_data.get("flights") or []):
+        payload = attach_tpe_to_payload(payload, tpe_data)
+        print(f"  merged TPE from {TPE_OUTPUT} ({payload['count']} total)")
+    else:
+        print("  WARN: no tpe-flights.json to merge", file=sys.stderr)
+
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Wrote {total} flights -> {OUTPUT}")
+    print(f"Wrote {payload['count']} flights -> {OUTPUT}")
 
-    tpe_rows = [f for f in flights if f.get("airport") == "TPE"]
-    tpe_meta = cache_meta.get("TPE", {})
-    if tpe_rows and not tpe_meta.get("stale"):
-        tpe_prepared = prepare_snapshot(tpe_rows)
-        TPE_OUTPUT.write_text(
-            json.dumps(
-                {
-                    "updatedAt": now,
-                    "flights": tpe_prepared["flights"],
-                    "byAirport": tpe_prepared["byAirport"],
-                    "byAirportDirection": tpe_prepared["byAirportDirection"],
-                    "byDirection": tpe_prepared["byDirection"],
-                    "cacheMeta": {"TPE": tpe_meta},
-                    "count": len(tpe_rows),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        print(f"  TPE snapshot -> {TPE_OUTPUT} ({len(tpe_rows)} rows)")
-    elif tpe_meta.get("stale"):
-        print(
-            f"  TPE: kept stale cache ({len(tpe_rows)} rows, "
-            f"failCount={tpe_meta.get('failCount')}, cachedAt={tpe_meta.get('cachedAt')})"
-        )
-
-    for airport in airports_meta:
+    for airport in payload.get("airports", []):
         code = airport.get("code", "?")
-        cm = cache_meta.get(code, {})
+        cm = (payload.get("cacheMeta") or {}).get(code, airport)
         err = cm.get("lastError")
         n = cm.get("rowCount", 0)
         if cm.get("stale"):

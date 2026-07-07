@@ -1,16 +1,21 @@
-name: Refresh flights
+name: Refresh TPE flights
 
 on:
   schedule:
-    # 每 10 分鐘（UTC）；桃園由 refresh-tpe-flights.yml 另排
-    - cron: "0,10,20,30,40,50 * * * *"
+    # 每 10 分鐘，與主排程錯開 5 分鐘（UTC）
+    - cron: "5,15,25,35,45,55 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  TPE_TIMEOUT: "240"
+  TPE_CONNECT_TIMEOUT: "120"
+  TPE_FETCH_RETRIES: "5"
+
 jobs:
-  refresh:
+  refresh-tpe:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,21 +27,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Fetch flight snapshot
-        run: python scripts/fetch_flights_snapshot.py
+      - name: Fetch TPE snapshot
+        run: python scripts/fetch_tpe_snapshot.py
 
       - name: Commit and push if changed
         id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/
+          git add data/tpe-flights.json data/flights.json
           if git diff --staged --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No changes"
             exit 0
           fi
-          git commit -m "chore: refresh flight data"
+          git commit -m "chore: refresh TPE flight data"
           git pull --rebase origin main
           git push
           echo "changed=true" >> "$GITHUB_OUTPUT"

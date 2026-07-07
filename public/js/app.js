@@ -715,7 +715,7 @@ function formatAirportCacheDetail(code) {
   lines.push(`資料時間：${formatTs(meta.cachedAt || meta.lastSuccessAt)}`);
   lines.push(`上次嘗試：${formatTs(meta.lastAttemptAt || state.dataUpdatedAt)}`);
   if (meta.stale) {
-    lines.push(`狀態：快取（本次更新失敗）`);
+    lines.push(`狀態：快取（更新失敗，顯示上次成功資料）`);
     lines.push(`連續失敗：${meta.failCount || 0} 次`);
   } else if (meta.failCount > 0) {
     lines.push(`連續失敗：${meta.failCount} 次（本次已成功）`);
