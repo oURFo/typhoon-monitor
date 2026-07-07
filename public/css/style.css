@@ -245,6 +245,31 @@ body {
   font-size: 0.82rem;
 }
 
+.direction-tabs {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 0.65rem;
+}
+
+.direction-tab {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.direction-tab.active {
+  background: rgba(61, 156, 245, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .filters {
   display: flex;
   gap: 0.75rem;

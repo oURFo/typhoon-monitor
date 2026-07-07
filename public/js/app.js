@@ -5,6 +5,7 @@ const state = {
   flights: [],
   airports: [],
   airportFilter: "all",
+  directionFilter: "departure",
   statusFilter: "all",
   searchActive: false,
   searchAirline: "",
@@ -265,6 +266,40 @@ function selectTyphoon(id) {
   drawTyphoon(typhoon);
 }
 
+function renderDirectionTabs() {
+  const tabs = document.getElementById("directionTabs");
+  tabs.innerHTML = "";
+  [
+    { id: "departure", label: "起飛" },
+    { id: "arrival", label: "抵達" },
+  ].forEach(({ id, label }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `direction-tab${state.directionFilter === id ? " active" : ""}`;
+    btn.textContent = label;
+    btn.onclick = () => {
+      state.directionFilter = id;
+      renderDirectionTabs();
+      renderFlights();
+    };
+    tabs.appendChild(btn);
+  });
+}
+
+function matchesDirection(f) {
+  if (state.directionFilter === "departure") return f.direction === "departure";
+  if (state.directionFilter === "arrival") return f.direction === "arrival";
+  return true;
+}
+
+function formatFlightRoute(f) {
+  if (f.direction === "arrival") {
+    const from = f.origin || f.destination || "-";
+    return `${from} → ${AIRPORT_LABEL[f.airport] || f.airport}`;
+  }
+  return `${f.airline || "-"} → ${f.destination || f.origin || "-"}`;
+}
+
 function renderAirportTabs() {
   const tabs = document.getElementById("airportTabs");
   tabs.innerHTML = "";
@@ -300,6 +335,8 @@ function renderFlights() {
     rows = state.byAirport[state.airportFilter] || rows;
   }
 
+  rows = rows.filter(matchesDirection);
+
   if (state.statusFilter !== "all") {
     rows = rows.filter((f) => f.status === state.statusFilter);
   }
@@ -334,8 +371,8 @@ function renderFlights() {
         <span class="flight-no">${f.flightNo || "-"}</span>
         <span class="badge ${f.status}">${STATUS_LABEL[f.status] || f.statusText || "-"}</span>
       </div>
-      <div>${AIRPORT_LABEL[f.airport] || f.airport} · ${f.direction === "arrival" ? "抵達" : "出發"}</div>
-      <div>${f.airline || "-"} → ${f.destination || f.origin || "-"}</div>
+      <div>${AIRPORT_LABEL[f.airport] || f.airport}</div>
+      <div>${formatFlightRoute(f)}</div>
       <div class="muted">${formatFlightTimeLine(f)}</div>
       ${f.remark ? `<div class="muted">${f.remark}</div>` : ""}
     </div>`
@@ -366,6 +403,7 @@ async function searchFlights() {
     number,
   });
   state.airportFilter = "all";
+  renderDirectionTabs();
   renderAirportTabs();
   renderFlights();
 }
@@ -523,6 +561,7 @@ async function loadFlights() {
       }));
   state.cacheHint = formatFlightCacheHint(data);
   document.getElementById("searchHint").textContent = state.cacheHint;
+  renderDirectionTabs();
   renderAirportTabs();
   renderFlights();
 }
