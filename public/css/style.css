@@ -356,10 +356,24 @@ select {
 .flight-card .top {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
   margin-bottom: 0.35rem;
 }
 
+.flight-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
 .flight-card .flight-no { font-weight: 600; }
+
+.flight-airline {
+  font-size: 0.82rem;
+  color: var(--text);
+}
 
 .badge {
   font-size: 0.75rem;

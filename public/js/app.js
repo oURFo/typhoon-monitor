@@ -353,6 +353,12 @@ function formatFlightRoute(f) {
   return `${f.origin || AIRPORT_LABEL[f.airport] || f.airport} → ${f.destination || "-"}`;
 }
 
+function formatFlightAirline(f) {
+  const name = (f.airline || "").trim();
+  if (name) return name;
+  return (f.airlineCode || "").trim() || "-";
+}
+
 const DIRECTION_LABEL = { departure: "起飛", arrival: "抵達" };
 
 function dashIfEmpty(value) {
@@ -491,7 +497,10 @@ function renderFlights() {
       (f, idx) => `
     <div class="flight-card${isFlightPast(f) ? " departed" : ""}" data-idx="${idx}" tabindex="0" role="button" aria-label="查看 ${f.flightNo || "航班"} 詳情">
       <div class="top">
-        <span class="flight-no">${f.flightNo || "-"}</span>
+        <div class="flight-head">
+          <span class="flight-no">${f.flightNo || "-"}</span>
+          <span class="flight-airline">${formatFlightAirline(f)}</span>
+        </div>
         <span class="badge ${f.status}">${STATUS_LABEL[f.status] || f.statusText || "-"}</span>
       </div>
       <div>${AIRPORT_LABEL[f.airport] || f.airport}</div>
