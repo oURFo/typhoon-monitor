@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .http_client import async_client
-from .tdx import fetch_tpe_fids_payload, tdx_configured
+from .tdx import airport_zh_label, fetch_tpe_fids_payload, get_airport_iata_zh_map, tdx_configured
 
 TAIWAN_TZ = timezone(timedelta(hours=8))
 
@@ -76,19 +76,24 @@ def _airline_zh(code: str) -> str:
     return AIRLINE_ZH.get(c, c)
 
 
-def _normalize_tpe_tdx(raw: dict[str, Any], direction: str) -> dict[str, Any]:
+def _normalize_tpe_tdx(
+    raw: dict[str, Any],
+    direction: str,
+    airport_names: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    names = airport_names or {}
     airline_code = _first(raw.get("AirlineID"))
     if direction == "departure":
         sched = _first(raw.get("ScheduleDepartureTime"))
         est = _first(raw.get("EstimatedDepartureTime"), raw.get("ActualDepartureTime"))
         status_text = _first(raw.get("DepartureRemark"), raw.get("DepartureRemarkEn"))
-        destination = _first(raw.get("ArrivalAirportID"))
+        destination = airport_zh_label(_first(raw.get("ArrivalAirportID")), names)
         origin = ""
     else:
         sched = _first(raw.get("ScheduleArrivalTime"))
         est = _first(raw.get("EstimatedArrivalTime"), raw.get("ActualArrivalTime"))
         status_text = _first(raw.get("ArrivalRemark"), raw.get("ArrivalRemarkEn"))
-        origin = _first(raw.get("DepartureAirportID"))
+        origin = airport_zh_label(_first(raw.get("DepartureAirportID")), names)
         destination = ""
     return {
         "airport": "TPE",
@@ -111,13 +116,14 @@ def _normalize_tpe_tdx(raw: dict[str, Any], direction: str) -> dict[str, Any]:
 
 async def fetch_tpe_from_tdx() -> list[dict[str, Any]]:
     payload = await fetch_tpe_fids_payload()
+    airport_names = await get_airport_iata_zh_map()
     flights: list[dict[str, Any]] = []
     for row in payload.get("FIDSDeparture") or []:
         if isinstance(row, dict):
-            flights.append(_normalize_tpe_tdx(row, "departure"))
+            flights.append(_normalize_tpe_tdx(row, "departure", airport_names))
     for row in payload.get("FIDSArrival") or []:
         if isinstance(row, dict):
-            flights.append(_normalize_tpe_tdx(row, "arrival"))
+            flights.append(_normalize_tpe_tdx(row, "arrival", airport_names))
     return flights
 
 
