@@ -347,10 +347,11 @@ function getFlightRows() {
 
 function formatFlightRoute(f) {
   if (f.direction === "arrival") {
-    const from = f.origin || f.destination || "-";
+    const from = resolveAirportPlace(f.origin || f.destination || "-");
     return `${from} → ${AIRPORT_LABEL[f.airport] || f.airport}`;
   }
-  return `${f.origin || AIRPORT_LABEL[f.airport] || f.airport} → ${f.destination || "-"}`;
+  const dest = resolveAirportPlace(f.destination || "-");
+  return `${f.origin || AIRPORT_LABEL[f.airport] || f.airport} → ${dest}`;
 }
 
 function formatFlightAirline(f) {
@@ -587,13 +588,38 @@ async function loadTyphoons() {
 
 const FETCH_NO_STORE = { cache: "no-store" };
 
+let airportIataZh = {};
+
+async function loadAirportIataMap() {
+  if (Object.keys(airportIataZh).length) return airportIataZh;
+  try {
+    const res = await fetch("/static/data/airport-iata-zh.json", FETCH_NO_STORE);
+    if (res.ok) {
+      const data = await res.json();
+      airportIataZh = data.names || {};
+    }
+  } catch {
+    /* 略過，仍顯示原始代碼 */
+  }
+  return airportIataZh;
+}
+
+function resolveAirportPlace(value) {
+  const v = (value || "").trim();
+  if (!v) return v;
+  if (/^[A-Za-z]{3}$/.test(v)) {
+    return airportIataZh[v.toUpperCase()] || v;
+  }
+  return v;
+}
+
 function isLocalDev() {
   return location.hostname === "localhost" || location.hostname === "127.0.0.1";
 }
 
 function flightsSnapshotUrl() {
   if (isLocalDev()) return "/data/flights.json";
-  return "/api/flights/snapshot";
+  return "/api/flights/snapshot?fresh=1";
 }
 
 function mergeTpeIfNeeded(data) {
@@ -773,6 +799,7 @@ function formatFlightCacheHint(data) {
 
 async function loadFlights() {
   if (state.searchActive) return;
+  await loadAirportIataMap();
   const data = await fetchFlightsPayload();
 
   state.allFlights = data.flights || [];

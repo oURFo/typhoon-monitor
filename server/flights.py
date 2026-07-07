@@ -755,6 +755,8 @@ async def _fetch_github_json(filename: str, *, bypass_cache: bool = False) -> di
             return cached
 
     url = f"{GITHUB_RAW_BASE.rstrip('/')}/{filename}"
+    if bypass_cache:
+        url = f"{url}?_={int(time.time())}"
     headers = {
         "Accept": "application/json",
         "User-Agent": "TyphoonMonitor/1.0 (+https://github.com/oURFo/typhoon-monitor)",

@@ -47,8 +47,17 @@ def airport_zh_label(code: str, names: dict[str, str]) -> str:
     return names.get(key, key)
 
 
+AIRPORT_IATA_OVERRIDES: dict[str, str] = {
+    "CJJ": "清州",
+    "HND": "東京",
+    "NRT": "東京",
+    "ICN": "首爾",
+    "GMP": "首爾",
+}
+
+
 def build_airport_iata_map(rows: list[Any]) -> dict[str, str]:
-    mapping: dict[str, str] = {}
+    mapping: dict[str, str] = dict(AIRPORT_IATA_OVERRIDES)
     for row in rows:
         if not isinstance(row, dict):
             continue

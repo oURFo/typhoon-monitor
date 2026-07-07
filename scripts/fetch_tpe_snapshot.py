@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,10 +15,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from server.flights import fetch_tpe_flights_with_fallback, merge_tpe_snapshot, prepare_snapshot  # noqa: E402
-from server.tdx import tdx_configured  # noqa: E402
+from server.tdx import AIRPORT_IATA_CACHE_PATH, tdx_configured  # noqa: E402
 
 OUTPUT = ROOT / "data" / "flights.json"
 TPE_OUTPUT = ROOT / "data" / "tpe-flights.json"
+PUBLIC_IATA = ROOT / "public" / "data" / "airport-iata-zh.json"
 
 
 def load_prev_tpe_meta() -> dict[str, Any]:
@@ -122,6 +124,11 @@ async def main() -> int:
     TPE_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     TPE_OUTPUT.write_text(json.dumps(tpe_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Wrote {len(rows)} TPE flights -> {TPE_OUTPUT} (source={source})")
+
+    if AIRPORT_IATA_CACHE_PATH.exists():
+        PUBLIC_IATA.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(AIRPORT_IATA_CACHE_PATH, PUBLIC_IATA)
+        print(f"  synced {PUBLIC_IATA}")
 
     merge_into_flights_json(tpe_payload, tpe_meta)
     return 0
