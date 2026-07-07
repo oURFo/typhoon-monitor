@@ -6,6 +6,8 @@ import asyncio
 import csv
 import io
 import json
+import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -526,8 +528,117 @@ def filter_flights(
 
 SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "flights.json"
 
+GITHUB_RAW_BASE = os.getenv(
+    "GITHUB_RAW_BASE",
+    "https://raw.githubusercontent.com/oURFo/typhoon-monitor/main/data",
+)
+REMOTE_CACHE_TTL = float(os.getenv("FLIGHTS_REMOTE_CACHE_TTL", "30"))
+
+_remote_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
 
 def load_flights_snapshot() -> dict[str, Any]:
     if not SNAPSHOT_PATH.exists():
         return {"airports": [], "flights": [], "updatedAt": None, "count": 0}
     return json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+
+def merge_tpe_snapshot(data: dict[str, Any], tpe_data: dict[str, Any]) -> dict[str, Any]:
+    """主快照缺桃園時，合併 tpe-flights.json。"""
+    tpe_rows = tpe_data.get("flights") or []
+    if not tpe_rows:
+        return data
+
+    others = [f for f in data.get("flights", []) if f.get("airport") != "TPE"]
+    by_airport = dict(data.get("byAirport") or {})
+    by_airport_direction = dict(data.get("byAirportDirection") or {})
+    by_direction = {
+        "departure": [
+            f for f in (data.get("byDirection") or {}).get("departure", []) if f.get("airport") != "TPE"
+        ],
+        "arrival": [
+            f for f in (data.get("byDirection") or {}).get("arrival", []) if f.get("airport") != "TPE"
+        ],
+    }
+
+    by_airport.pop("TPE", None)
+    by_airport_direction.pop("TPE", None)
+    by_airport["TPE"] = (tpe_data.get("byAirport") or {}).get("TPE") or tpe_rows
+    tpe_dirs = (tpe_data.get("byAirportDirection") or {}).get("TPE") or {
+        "departure": [f for f in tpe_rows if f.get("direction") == "departure"],
+        "arrival": [f for f in tpe_rows if f.get("direction") == "arrival"],
+    }
+    by_airport_direction["TPE"] = tpe_dirs
+
+    tpe_by_dir = tpe_data.get("byDirection") or {}
+    if tpe_by_dir:
+        by_direction["departure"].extend(tpe_by_dir.get("departure", []))
+        by_direction["arrival"].extend(tpe_by_dir.get("arrival", []))
+    else:
+        by_direction["departure"].extend(tpe_dirs.get("departure", []))
+        by_direction["arrival"].extend(tpe_dirs.get("arrival", []))
+
+    airports = [a for a in data.get("airports", []) if a.get("code") != "TPE"]
+    tpe_meta = (tpe_data.get("cacheMeta") or {}).get("TPE") or {}
+    airports.append(
+        {
+            "code": "TPE",
+            "name": "桃園國際機場",
+            "stale": True,
+            "error": "合併 tpe-flights.json 快取",
+            **tpe_meta,
+        }
+    )
+
+    cache_meta = {**(data.get("cacheMeta") or {}), **(tpe_data.get("cacheMeta") or {})}
+    return {
+        **data,
+        "flights": [*others, *tpe_rows],
+        "byAirport": by_airport,
+        "byAirportDirection": by_airport_direction,
+        "byDirection": by_direction,
+        "cacheMeta": cache_meta,
+        "airports": airports,
+        "count": len(others) + len(tpe_rows),
+    }
+
+
+def _tpe_in_snapshot(data: dict[str, Any]) -> bool:
+    tpe_dirs = (data.get("byAirportDirection") or {}).get("TPE") or {}
+    return len(tpe_dirs.get("departure") or []) > 0
+
+
+async def _fetch_github_json(filename: str, *, bypass_cache: bool = False) -> dict[str, Any]:
+    now = time.monotonic()
+    if not bypass_cache and filename in _remote_cache:
+        fetched_at, cached = _remote_cache[filename]
+        if now - fetched_at < REMOTE_CACHE_TTL:
+            return cached
+
+    url = f"{GITHUB_RAW_BASE.rstrip('/')}/{filename}"
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "TyphoonMonitor/1.0 (+https://github.com/oURFo/typhoon-monitor)",
+        "Cache-Control": "no-cache",
+    }
+    async with async_client(timeout=45.0) as client:
+        res = await client.get(url, headers=headers)
+        res.raise_for_status()
+        payload = res.json()
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"{filename} 不是 JSON 物件")
+    _remote_cache[filename] = (now, payload)
+    return payload
+
+
+async def fetch_remote_snapshot(*, bypass_cache: bool = False) -> dict[str, Any]:
+    """從 GitHub raw 讀取最新 flights.json（Render 正式環境用）。"""
+    data = await _fetch_github_json("flights.json", bypass_cache=bypass_cache)
+    if _tpe_in_snapshot(data):
+        return data
+    try:
+        tpe_data = await _fetch_github_json("tpe-flights.json", bypass_cache=bypass_cache)
+        return merge_tpe_snapshot(data, tpe_data)
+    except Exception:  # noqa: BLE001
+        return data

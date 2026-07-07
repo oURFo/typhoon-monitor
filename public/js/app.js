@@ -563,7 +563,7 @@ function clearFlightSearch() {
 }
 
 async function loadTyphoons() {
-  const res = await fetch("/api/typhoons");
+  const res = await fetch("/api/typhoons", FETCH_NO_STORE);
   if (!res.ok) throw new Error("颱風資料載入失敗");
   const data = await res.json();
   state.typhoons = data.typhoons || [];
@@ -576,38 +576,40 @@ async function loadTyphoons() {
   updateSatelliteLayer();
 }
 
-const GITHUB_REPO = "oURFo/typhoon-monitor";
-const GITHUB_BRANCH = "main";
+const FETCH_NO_STORE = { cache: "no-store" };
 
-function flightsDataUrl() {
-  const local =
-    location.hostname === "localhost" || location.hostname === "127.0.0.1";
-  if (local) return "/data/flights.json";
-  const bust = Math.floor(Date.now() / 600000);
-  return `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${GITHUB_BRANCH}/data/flights.json?t=${bust}`;
+function isLocalDev() {
+  return location.hostname === "localhost" || location.hostname === "127.0.0.1";
 }
 
-async function fetchFlightsPayload() {
-  const res = await fetch(flightsDataUrl());
-  if (!res.ok) throw new Error("航班資料載入失敗");
-  const data = await res.json();
+function flightsSnapshotUrl() {
+  if (isLocalDev()) return "/data/flights.json";
+  return "/api/flights/snapshot";
+}
+
+function mergeTpeIfNeeded(data) {
   const tpeInMain = (data.byAirportDirection?.TPE?.departure?.length || 0) > 0;
   if (tpeInMain) return data;
+  return null;
+}
 
-  const tpeUrl = flightsDataUrl().replace("flights.json", "tpe-flights.json");
+async function fetchTpeFallback(mainData) {
+  const tpeUrl = isLocalDev() ? "/data/tpe-flights.json" : null;
+  if (!tpeUrl) return mainData;
+
   try {
-    const tpeRes = await fetch(tpeUrl);
-    if (!tpeRes.ok) return data;
+    const tpeRes = await fetch(tpeUrl, FETCH_NO_STORE);
+    if (!tpeRes.ok) return mainData;
     const tpeData = await tpeRes.json();
     const tpeRows = tpeData.flights || [];
-    if (!tpeRows.length) return data;
+    if (!tpeRows.length) return mainData;
 
-    const others = (data.flights || []).filter((f) => f.airport !== "TPE");
-    const byAirport = { ...(data.byAirport || {}) };
-    const byAirportDirection = { ...(data.byAirportDirection || {}) };
+    const others = (mainData.flights || []).filter((f) => f.airport !== "TPE");
+    const byAirport = { ...(mainData.byAirport || {}) };
+    const byAirportDirection = { ...(mainData.byAirportDirection || {}) };
     const byDirection = {
-      departure: [...(data.byDirection?.departure || []).filter((f) => f.airport !== "TPE")],
-      arrival: [...(data.byDirection?.arrival || []).filter((f) => f.airport !== "TPE")],
+      departure: [...(mainData.byDirection?.departure || []).filter((f) => f.airport !== "TPE")],
+      arrival: [...(mainData.byDirection?.arrival || []).filter((f) => f.airport !== "TPE")],
     };
 
     delete byAirport.TPE;
@@ -623,7 +625,7 @@ async function fetchFlightsPayload() {
       byDirection.arrival.push(...byAirportDirection.TPE.arrival);
     }
 
-    const airports = (data.airports || []).filter((a) => a.code !== "TPE");
+    const airports = (mainData.airports || []).filter((a) => a.code !== "TPE");
     airports.push({
       code: "TPE",
       name: "桃園國際機場",
@@ -632,18 +634,31 @@ async function fetchFlightsPayload() {
       ...(tpeData.cacheMeta?.TPE || {}),
     });
     return {
-      ...data,
+      ...mainData,
       flights: [...others, ...tpeRows],
       byAirport,
       byAirportDirection,
       byDirection,
-      cacheMeta: { ...(data.cacheMeta || {}), ...(tpeData.cacheMeta || {}) },
+      cacheMeta: { ...(mainData.cacheMeta || {}), ...(tpeData.cacheMeta || {}) },
       airports,
       count: others.length + tpeRows.length,
     };
   } catch {
-    return data;
+    return mainData;
   }
+}
+
+async function fetchFlightsPayload() {
+  const res = await fetch(flightsSnapshotUrl(), FETCH_NO_STORE);
+  if (!res.ok) throw new Error("航班資料載入失敗");
+  let data = await res.json();
+
+  if (isLocalDev()) {
+    if (!mergeTpeIfNeeded(data)) {
+      data = await fetchTpeFallback(data);
+    }
+  }
+  return data;
 }
 
 function filterFlightsLocal(flights, { destination = "", airline = "", number = "" } = {}) {
@@ -707,7 +722,7 @@ function renderCachePanel() {
   const panel = document.getElementById("cachePanel");
   if (!panel) return;
 
-  const parts = [`整體快照：${formatTs(state.dataUpdatedAt)}（GitHub 每 10 分鐘更新）`];
+  const parts = [`整體快照：${formatTs(state.dataUpdatedAt)}（GitHub 每 10 分鐘更新 · 經由網站 API 讀取）`];
 
   if (state.airportFilter !== "all") {
     parts.push(formatAirportCacheDetail(state.airportFilter));

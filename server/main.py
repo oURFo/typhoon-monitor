@@ -26,17 +26,27 @@ if DATA_DIR.is_dir():
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(PUBLIC_DIR / "index.html")
+    return FileResponse(
+        PUBLIC_DIR / "index.html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+def _no_store_headers(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
 
 @app.get("/api/health")
-async def health() -> dict[str, str]:
+async def health(response: Response) -> dict[str, str]:
+    _no_store_headers(response)
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/api/typhoons")
 async def get_typhoons(response: Response) -> dict:
-    response.headers["Cache-Control"] = "no-store"
+    _no_store_headers(response)
     try:
         items = await cwa.fetch_typhoons()
         satellite = await cwa.resolve_satellite_meta()
@@ -58,6 +68,19 @@ async def get_typhoon_warnings() -> dict:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@app.get("/api/flights/snapshot")
+async def get_flights_snapshot(response: Response, fresh: bool = False) -> dict:
+    """正式網站前端讀取：代理 GitHub 最新 flights.json，避免 CDN／瀏覽器快取。"""
+    _no_store_headers(response)
+    try:
+        return await flights.fetch_remote_snapshot(bypass_cache=fresh)
+    except Exception as exc:  # noqa: BLE001
+        snapshot = flights.load_flights_snapshot()
+        if snapshot.get("flights"):
+            return snapshot
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.get("/api/flights")
 async def get_flights(
     response: Response,
@@ -65,9 +88,12 @@ async def get_flights(
     number: str = "",
     destination: str = "",
 ) -> dict:
-    """本機除錯用；正式網站前端直接讀 GitHub 上的 data/flights.json。"""
-    response.headers["Cache-Control"] = "no-store"
-    snapshot = flights.load_flights_snapshot()
+    """篩選版；優先遠端快照，本機無資料時讀 repo 內 JSON。"""
+    _no_store_headers(response)
+    try:
+        snapshot = await flights.fetch_remote_snapshot()
+    except Exception:  # noqa: BLE001
+        snapshot = flights.load_flights_snapshot()
     rows = snapshot.get("flights", [])
     if airline.strip() or number.strip() or destination.strip():
         rows = flights.filter_flights(rows, airline, number, destination)
