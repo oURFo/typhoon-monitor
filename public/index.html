@@ -83,11 +83,20 @@
     <div id="flightList" class="flight-list"></div>
   </section>
 
+  <div id="flightModal" class="flight-modal hidden" aria-hidden="true">
+    <div class="flight-modal-backdrop" data-close="1"></div>
+    <div class="flight-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="flightModalTitle">
+      <button type="button" class="flight-modal-close" aria-label="關閉">&times;</button>
+      <div id="flightModalBody"></div>
+    </div>
+  </div>
+
   <footer class="footer">
     資料來源：中央氣象署、各機場開放資料 · 僅供參考，請以官方公告為準
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/app.js?v=16"></script>
+  <script src="/static/js/aircraft.js?v=2"></script>
+  <script src="/static/js/app.js?v=18"></script>
 </body>
 </html>

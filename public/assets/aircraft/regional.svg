@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 110" fill="none" role="img" aria-label="regional aircraft">
+  <path d="M24 56 L54 52 L72 42 L100 40 L112 36 L124 36 L134 40 L176 42 L206 48 L272 52 L282 56 L272 60 L206 64 L176 70 L134 72 L124 76 L112 76 L100 72 L72 70 L54 60 Z" fill="#4a6a5a"/>
+  <path d="M112 36 L124 36 L120 30 L116 30 Z" fill="#355040"/>
+  <ellipse cx="148" cy="56" rx="14" ry="13" fill="#6a9078"/>
+  <circle cx="88" cy="54" r="7" fill="#2a4030"/>
+  <circle cx="88" cy="58" r="3" fill="#6a9078"/>
+  <path d="M196 52 L214 50 L216 62 L198 64 Z" fill="#355040"/>
+</svg>

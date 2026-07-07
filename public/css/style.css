@@ -339,6 +339,18 @@ select {
   border-radius: 8px;
   padding: 0.75rem;
   font-size: 0.88rem;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.flight-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.flight-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .flight-card .top {
@@ -363,6 +375,130 @@ select {
 .flight-card.departed {
   opacity: 0.42;
   filter: grayscale(0.55);
+}
+
+.flight-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.flight-modal.hidden {
+  display: none;
+}
+
+.flight-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 18, 0.72);
+}
+
+.flight-modal-dialog {
+  position: relative;
+  width: min(100%, 420px);
+  max-height: min(90vh, 720px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1rem 1.1rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+.flight-modal-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.65rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.flight-modal-close:hover { color: var(--text); }
+
+.flight-modal-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 110px;
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(180deg, rgba(61, 156, 245, 0.08), rgba(0, 0, 0, 0));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.flight-modal-image img {
+  width: min(100%, 300px);
+  height: auto;
+}
+
+.flight-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-right: 1.5rem;
+}
+
+.flight-modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.flight-modal-sub {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.flight-modal-grid {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.45rem 0.75rem;
+  font-size: 0.88rem;
+}
+
+.flight-modal-grid dt {
+  margin: 0;
+  color: var(--muted);
+}
+
+.flight-modal-grid dd {
+  margin: 0;
+}
+
+.flight-modal-credit {
+  margin-top: 0.75rem;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.flight-modal-credit a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.flight-modal-credit a:hover {
+  text-decoration: underline;
+}
+
+.flight-modal-note {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .muted { color: var(--muted); }

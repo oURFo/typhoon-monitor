@@ -18,6 +18,7 @@ const state = {
   cacheHint: "",
   dataUpdatedAt: null,
   cacheMeta: {},
+  renderedRows: [],
 };
 
 let map;
@@ -349,7 +350,77 @@ function formatFlightRoute(f) {
     const from = f.origin || f.destination || "-";
     return `${from} → ${AIRPORT_LABEL[f.airport] || f.airport}`;
   }
-  return `${f.airline || "-"} → ${f.destination || f.origin || "-"}`;
+  return `${f.origin || AIRPORT_LABEL[f.airport] || f.airport} → ${f.destination || "-"}`;
+}
+
+const DIRECTION_LABEL = { departure: "起飛", arrival: "抵達" };
+
+function dashIfEmpty(value) {
+  const v = (value || "").trim();
+  return v || "—";
+}
+
+async function openFlightModal(f) {
+  const modal = document.getElementById("flightModal");
+  const body = document.getElementById("flightModalBody");
+  if (!modal || !body || !f) return;
+
+  await loadAircraftCredits();
+  const imgUrl = aircraftImageUrl(f.aircraftType || "");
+  const aircraftLabel = f.aircraftType ? aircraftDisplayName(f.aircraftType) : "—";
+  const creditHtml = formatAircraftAttributionHtml(f.aircraftType || "");
+  const terminalRow =
+    f.airport === "TPE" || f.terminal
+      ? `<dt>航廈</dt><dd>${dashIfEmpty(f.terminal)}</dd>`
+      : "";
+
+  body.innerHTML = `
+    <div class="flight-modal-image">
+      <img src="${imgUrl}" alt="${aircraftLabel === "—" ? "客機示意圖" : aircraftLabel}" loading="lazy" />
+    </div>
+    <div class="flight-modal-head">
+      <div>
+        <h3 class="flight-modal-title" id="flightModalTitle">${f.flightNo || "-"}</h3>
+        <p class="flight-modal-sub">${dashIfEmpty(f.airline)}${f.airlineCode ? ` (${f.airlineCode})` : ""}</p>
+      </div>
+      <span class="badge ${f.status}">${STATUS_LABEL[f.status] || f.statusText || "-"}</span>
+    </div>
+    <dl class="flight-modal-grid">
+      <dt>機場</dt><dd>${AIRPORT_LABEL[f.airport] || f.airport}</dd>
+      <dt>方向</dt><dd>${DIRECTION_LABEL[f.direction] || f.direction || "—"}</dd>
+      <dt>路線</dt><dd>${formatFlightRoute(f)}</dd>
+      <dt>時間</dt><dd>${formatFlightTimeLine(f)}</dd>
+      ${terminalRow}
+      <dt>登機門</dt><dd>${dashIfEmpty(f.gate)}</dd>
+      <dt>機型</dt><dd>${aircraftLabel}</dd>
+      <dt>動態</dt><dd>${dashIfEmpty(f.statusText)}</dd>
+      ${f.remark ? `<dt>備註</dt><dd>${f.remark}</dd>` : ""}
+    </dl>
+    ${creditHtml ? `<p class="flight-modal-credit">${creditHtml}</p>` : ""}
+    <p class="flight-modal-note">示意照片僅供辨識機型級別，非該航班實機或航空公司塗裝。</p>
+  `;
+
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function closeFlightModal() {
+  const modal = document.getElementById("flightModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+function initFlightModal() {
+  const modal = document.getElementById("flightModal");
+  if (!modal) return;
+  modal.querySelector(".flight-modal-close")?.addEventListener("click", closeFlightModal);
+  modal.querySelector(".flight-modal-backdrop")?.addEventListener("click", closeFlightModal);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modal.classList.contains("hidden")) closeFlightModal();
+  });
 }
 
 function renderAirportTabs() {
@@ -408,6 +479,8 @@ function renderFlights() {
     hint.textContent = [state.cacheHint, browse].filter(Boolean).join(" · ");
   }
 
+  state.renderedRows = rows;
+
   if (!rows.length) {
     list.innerHTML = '<p class="muted">無符合條件的航班</p>';
     return;
@@ -415,8 +488,8 @@ function renderFlights() {
 
   list.innerHTML = rows
     .map(
-      (f) => `
-    <div class="flight-card${isFlightPast(f) ? " departed" : ""}">
+      (f, idx) => `
+    <div class="flight-card${isFlightPast(f) ? " departed" : ""}" data-idx="${idx}" tabindex="0" role="button" aria-label="查看 ${f.flightNo || "航班"} 詳情">
       <div class="top">
         <span class="flight-no">${f.flightNo || "-"}</span>
         <span class="badge ${f.status}">${STATUS_LABEL[f.status] || f.statusText || "-"}</span>
@@ -424,10 +497,29 @@ function renderFlights() {
       <div>${AIRPORT_LABEL[f.airport] || f.airport}</div>
       <div>${formatFlightRoute(f)}</div>
       <div class="muted">${formatFlightTimeLine(f)}</div>
+      ${f.gate ? `<div class="muted">登機門 ${f.gate}</div>` : ""}
       ${f.remark ? `<div class="muted">${f.remark}</div>` : ""}
     </div>`
     )
     .join("");
+}
+
+function onFlightListClick(e) {
+  const card = e.target.closest(".flight-card");
+  if (!card) return;
+  const idx = Number(card.dataset.idx);
+  const flight = state.renderedRows[idx];
+  if (flight) openFlightModal(flight).catch(() => {});
+}
+
+function onFlightListKeydown(e) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const card = e.target.closest(".flight-card");
+  if (!card) return;
+  e.preventDefault();
+  const idx = Number(card.dataset.idx);
+  const flight = state.renderedRows[idx];
+  if (flight) openFlightModal(flight).catch(() => {});
 }
 
 async function searchFlights() {
@@ -747,6 +839,10 @@ document.getElementById("toggleSatellite").addEventListener("change", updateSate
 
 initMap();
 initTyphoonPanel();
+initFlightModal();
+loadAircraftCredits();
+document.getElementById("flightList")?.addEventListener("click", onFlightListClick);
+document.getElementById("flightList")?.addEventListener("keydown", onFlightListKeydown);
 refresh();
 setInterval(loadTyphoons, 5 * 60 * 1000);
 setInterval(() => {

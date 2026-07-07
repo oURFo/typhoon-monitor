@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" fill="none" role="img" aria-label="narrow-body aircraft">
+  <path d="M20 60 L52 56 L72 44 L104 42 L118 36 L136 36 L150 42 L210 44 L244 52 L300 56 L310 60 L300 64 L244 68 L210 76 L150 78 L136 84 L118 84 L104 78 L72 76 L52 64 Z" fill="#3d6b8e"/>
+  <path d="M118 36 L136 36 L132 28 L122 28 Z" fill="#2d5570"/>
+  <ellipse cx="178" cy="60" rx="20" ry="17" fill="#5a8fb0"/>
+  <rect x="158" y="50" width="40" height="20" rx="3" fill="#7ab0cc" opacity="0.45"/>
+  <path d="M248 56 L268 54 L268 66 L248 68 Z" fill="#2d5570"/>
+</svg>

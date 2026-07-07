@@ -1,0 +1,123 @@
+{
+  "a320": {
+    "label": "a320",
+    "localPath": "/static/assets/aircraft/photos/a320.jpg",
+    "wikimediaFile": "21-SEP-2022 - 3K684 KUL-SIN (A320 - 9V-JSJ) (04).jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:21-SEP-2022%20-%203K684%20KUL-SIN%20%28A320%20-%209V-JSJ%29%20%2804%29.jpg",
+    "author": "Simply Aviation",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+    "attribution": "Simply Aviation / CC BY 4.0 / Wikimedia Commons"
+  },
+  "a321": {
+    "label": "a321",
+    "localPath": "/static/assets/aircraft/photos/a321.jpg",
+    "wikimediaFile": "Airbus A321 - DSC0082.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:Airbus%20A321%20-%20DSC0082.jpg",
+    "author": "Rjcastillo",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "Rjcastillo / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "a330": {
+    "label": "a330",
+    "localPath": "/static/assets/aircraft/photos/a330.jpg",
+    "wikimediaFile": "2017-09-20 02 Air Greenland Airbus A330-200 (OY-GRN) at Kangerlussuaq Airport (SFJ), Greenlan.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:2017-09-20%2002%20Air%20Greenland%20Airbus%20A330-200%20%28OY-GRN%29%20at%20Kangerlussuaq%20Airport%20%28SFJ%29%2C%20Greenlan.jpg",
+    "author": "Gordon Leggett",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "Gordon Leggett / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "a330neo": {
+    "label": "a330neo",
+    "localPath": "/static/assets/aircraft/photos/a330neo.jpg",
+    "wikimediaFile": "Airbus A330neo F-WTTN 25.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:Airbus%20A330neo%20F-WTTN%2025.jpg",
+    "author": "New York-air",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "New York-air / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "a350": {
+    "label": "a350",
+    "localPath": "/static/assets/aircraft/photos/a350.jpg",
+    "wikimediaFile": "Airbus A350-1000 F-WMIL 15.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:Airbus%20A350-1000%20F-WMIL%2015.jpg",
+    "author": "New York-air",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "New York-air / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "b737": {
+    "label": "b737",
+    "localPath": "/static/assets/aircraft/photos/b737.jpg",
+    "wikimediaFile": "Southwest Boeing 737-800 N8523W BWI MD1.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:Southwest%20Boeing%20737-800%20N8523W%20BWI%20MD1.jpg",
+    "author": "Acroterion",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "Acroterion / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "b777": {
+    "label": "b777",
+    "localPath": "/static/assets/aircraft/photos/b777.jpg",
+    "wikimediaFile": "Qatar Boeing 777-300ER A7-BEP IAD VA1.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:Qatar%20Boeing%20777-300ER%20A7-BEP%20IAD%20VA1.jpg",
+    "author": "Acroterion",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "Acroterion / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "b787": {
+    "label": "b787",
+    "localPath": "/static/assets/aircraft/photos/b787.jpg",
+    "wikimediaFile": "N1015X Air Tahiti Nui Boeing 787-9 Dreamliner 26.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:N1015X%20Air%20Tahiti%20Nui%20Boeing%20787-9%20Dreamliner%2026.jpg",
+    "author": "New York-air",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "New York-air / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "atr72": {
+    "label": "atr72",
+    "localPath": "/static/assets/aircraft/photos/atr72.jpg",
+    "wikimediaFile": "ATR 72 G-FBXB MG 8116.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:ATR%2072%20G-FBXB%20MG%208116.jpg",
+    "author": "Ronnie Robertson",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "attribution": "Ronnie Robertson / CC BY-SA 2.0 / Wikimedia Commons"
+  },
+  "a319": {
+    "label": "a319",
+    "localPath": "/static/assets/aircraft/photos/a319.jpg",
+    "wikimediaFile": "2017-09-12 Atlantic Airways (Faroe Islands) Airbus A319 aircraft (OY-RCG) at Narsarsuaq, Greenland.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:2017-09-12%20Atlantic%20Airways%20%28Faroe%20Islands%29%20Airbus%20A319%20aircraft%20%28OY-RCG%29%20at%20Narsarsuaq%2C%20Greenland.jpg",
+    "author": "Gordon Leggett",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "Gordon Leggett / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "b747": {
+    "label": "b747",
+    "localPath": "/static/assets/aircraft/photos/b747.jpg",
+    "wikimediaFile": "2018 MUNCYT Boeing 747 -7.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:2018%20MUNCYT%20Boeing%20747%20-7.jpg",
+    "author": "Luis Miguel Bugallo Sánchez (Lmbuga)",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "Luis Miguel Bugallo Sánchez (Lmbuga) / CC BY-SA 4.0 / Wikimedia Commons"
+  },
+  "b739": {
+    "label": "b737",
+    "localPath": "/static/assets/aircraft/photos/b737.jpg",
+    "wikimediaFile": "Southwest Boeing 737-800 N8523W BWI MD1.jpg",
+    "commonsUrl": "https://commons.wikimedia.org/wiki/File:Southwest%20Boeing%20737-800%20N8523W%20BWI%20MD1.jpg",
+    "author": "Acroterion",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "attribution": "Acroterion / CC BY-SA 4.0 / Wikimedia Commons",
+    "aliasOf": "b737"
+  }
+}
