@@ -19,9 +19,11 @@ CWA_WARN_URL = (
     "https://opendata.cwa.gov.tw/api/v1/rest/datastore/W-C0034-001"
 )
 
-# 葵花 8/9 全圓盤可見光（JMA 公開圖，每 10 分鐘一張）
-SATELLITE_BASE = "https://www.data.jma.go.jp/mscweb/data/himawari/img/fd_/fd__vir_{slot}.jpg"
-SATELLITE_BOUNDS = [[-60, 85], [60, 205]]  # 全圓盤 [南西, 北東]
+# 葵花 8/9 可見光：東南亞區域圖（已地理配準，可貼合 Leaflet 地圖）
+# JMA 範圍：105°E–140°E、0°N–30°N
+SATELLITE_AREA = "se2"
+SATELLITE_BOUNDS = [[0, 105], [30, 140]]
+SATELLITE_BASE = "https://www.data.jma.go.jp/mscweb/data/himawari/img"
 
 
 def _get_key() -> str:
@@ -150,12 +152,15 @@ def _himawari_slot(offset_slots: int = 0) -> str:
     return slot.strftime("%H%M")
 
 
-def _himawari_url(offset_slots: int = 0) -> str:
-    return SATELLITE_BASE.format(slot=_himawari_slot(offset_slots))
+def _himawari_url(offset_slots: int = 0, *, area: str = SATELLITE_AREA) -> str:
+    slot = _himawari_slot(offset_slots)
+    if area == "fd_":
+        return f"{SATELLITE_BASE}/fd_/fd__vir_{slot}.jpg"
+    return f"{SATELLITE_BASE}/{area}/{area}_vir_{slot}.jpg"
 
 
 async def resolve_satellite_meta() -> dict[str, Any]:
-    """解析最新可用的 Himawari 全圓盤圖 URL（舊 static latest 路徑已失效）。"""
+    """解析最新可用的 Himawari 區域圖 URL（須用區域圖才能貼合地圖）。"""
     headers = {"User-Agent": "TyphoonMonitor/1.0"}
     async with async_client(timeout=15.0) as client:
         for offset in range(6):
@@ -167,6 +172,7 @@ async def resolve_satellite_meta() -> dict[str, Any]:
                         "url": url,
                         "bounds": SATELLITE_BOUNDS,
                         "attribution": "JMA Himawari",
+                        "region": "Southeast Asia 2",
                         "slot": _himawari_slot(offset),
                     }
             except Exception:  # noqa: BLE001

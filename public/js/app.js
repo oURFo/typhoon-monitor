@@ -168,8 +168,8 @@ function parseSatelliteBounds(raw) {
     }
   }
   return [
-    [-60, 85],
-    [60, 205],
+    [0, 105],
+    [30, 140],
   ];
 }
 
