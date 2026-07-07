@@ -13,6 +13,8 @@ const state = {
   searchDestination: "",
   allFlights: [],
   byAirport: {},
+  byAirportDirection: {},
+  byDirection: {},
   cacheHint: "",
 };
 
@@ -292,6 +294,54 @@ function matchesDirection(f) {
   return true;
 }
 
+function buildFlightIndexes(flights) {
+  const byAirport = {};
+  const byAirportDirection = {};
+  const byDirection = { departure: [], arrival: [] };
+
+  for (const f of flights) {
+    const code = f.airport || "?";
+    const dir = f.direction === "arrival" ? "arrival" : "departure";
+    (byAirport[code] ||= []).push(f);
+    (byAirportDirection[code] ||= { departure: [], arrival: [] })[dir].push(f);
+    byDirection[dir].push(f);
+  }
+  return { byAirport, byAirportDirection, byDirection };
+}
+
+function mergeDirectionBuckets(target, source) {
+  for (const dir of ["departure", "arrival"]) {
+    if (source?.[dir]?.length) {
+      target[dir] = (target[dir] || []).concat(source[dir]);
+    }
+  }
+}
+
+function getFlightRows() {
+  const dir = state.directionFilter;
+  const code = state.airportFilter;
+
+  if (state.searchActive) {
+    let rows = state.flights.filter(matchesDirection);
+    if (code !== "all") {
+      rows = rows.filter((f) => f.airport === code);
+    }
+    return rows;
+  }
+
+  if (code !== "all") {
+    const bucket = state.byAirportDirection?.[code]?.[dir];
+    if (bucket) return bucket;
+    const pool =
+      state.byAirport?.[code] || state.allFlights.filter((f) => f.airport === code);
+    return pool.filter(matchesDirection);
+  }
+
+  const bucket = state.byDirection?.[dir];
+  if (bucket) return bucket;
+  return state.allFlights.filter(matchesDirection);
+}
+
 function formatFlightRoute(f) {
   if (f.direction === "arrival") {
     const from = f.origin || f.destination || "-";
@@ -329,13 +379,7 @@ function renderAirportTabs() {
 function renderFlights() {
   const list = document.getElementById("flightList");
   const hint = document.getElementById("searchHint");
-  let rows = state.flights;
-
-  if (!state.searchActive && state.airportFilter !== "all") {
-    rows = state.byAirport[state.airportFilter] || rows;
-  }
-
-  rows = rows.filter(matchesDirection);
+  let rows = getFlightRows();
 
   if (state.statusFilter !== "all") {
     rows = rows.filter((f) => f.status === state.statusFilter);
@@ -449,21 +493,38 @@ async function fetchFlightsPayload() {
   const res = await fetch(flightsDataUrl());
   if (!res.ok) throw new Error("航班資料載入失敗");
   const data = await res.json();
-  const tpeCount = (data.byAirport?.TPE || data.flights || []).filter(
-    (f) => f.airport === "TPE"
-  ).length;
-  if (tpeCount > 0) return data;
+  const tpeInMain = (data.byAirportDirection?.TPE?.departure?.length || 0) > 0;
+  if (tpeInMain) return data;
 
   const tpeUrl = flightsDataUrl().replace("flights.json", "tpe-flights.json");
   try {
     const tpeRes = await fetch(tpeUrl);
     if (!tpeRes.ok) return data;
     const tpeData = await tpeRes.json();
-    const tpeRows = tpeData.byAirport?.TPE || tpeData.flights || [];
+    const tpeRows = tpeData.flights || [];
     if (!tpeRows.length) return data;
+
     const others = (data.flights || []).filter((f) => f.airport !== "TPE");
     const byAirport = { ...(data.byAirport || {}) };
+    const byAirportDirection = { ...(data.byAirportDirection || {}) };
+    const byDirection = {
+      departure: [...(data.byDirection?.departure || []).filter((f) => f.airport !== "TPE")],
+      arrival: [...(data.byDirection?.arrival || []).filter((f) => f.airport !== "TPE")],
+    };
+
     delete byAirport.TPE;
+    delete byAirportDirection.TPE;
+    byAirport.TPE = tpeData.byAirport?.TPE || tpeRows;
+    byAirportDirection.TPE = tpeData.byAirportDirection?.TPE || {
+      departure: tpeRows.filter((f) => f.direction === "departure"),
+      arrival: tpeRows.filter((f) => f.direction === "arrival"),
+    };
+    mergeDirectionBuckets(byDirection, tpeData.byDirection);
+    if (!tpeData.byDirection) {
+      byDirection.departure.push(...byAirportDirection.TPE.departure);
+      byDirection.arrival.push(...byAirportDirection.TPE.arrival);
+    }
+
     const airports = (data.airports || []).filter((a) => a.code !== "TPE");
     airports.push({
       code: "TPE",
@@ -474,7 +535,9 @@ async function fetchFlightsPayload() {
     return {
       ...data,
       flights: [...others, ...tpeRows],
-      byAirport: { ...byAirport, TPE: tpeRows },
+      byAirport,
+      byAirportDirection,
+      byDirection,
       airports,
       count: others.length + tpeRows.length,
     };
@@ -538,15 +601,18 @@ async function loadFlights() {
   if (state.searchActive) return;
   const data = await fetchFlightsPayload();
 
-  state.byAirport = data.byAirport || {};
   state.allFlights = data.flights || [];
-  if (!Object.keys(state.byAirport).length && state.allFlights.length) {
-    state.byAirport = state.allFlights.reduce((acc, f) => {
-      const code = f.airport || "?";
-      (acc[code] ||= []).push(f);
-      return acc;
-    }, {});
+  state.byAirport = data.byAirport || {};
+  state.byAirportDirection = data.byAirportDirection || {};
+  state.byDirection = data.byDirection || { departure: [], arrival: [] };
+
+  if (state.allFlights.length && !Object.keys(state.byAirportDirection).length) {
+    const built = buildFlightIndexes(state.allFlights);
+    state.byAirport = built.byAirport;
+    state.byAirportDirection = built.byAirportDirection;
+    state.byDirection = built.byDirection;
   }
+
   state.flights = state.allFlights;
   const fromApi = data.airports || [];
   state.airports = fromApi.length

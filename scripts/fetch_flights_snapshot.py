@@ -57,6 +57,8 @@ async def main() -> int:
         "airports": data.get("airports", []),
         "flights": flights,
         "byAirport": prepared["byAirport"],
+        "byAirportDirection": prepared["byAirportDirection"],
+        "byDirection": prepared["byDirection"],
         "count": total,
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +75,8 @@ async def main() -> int:
                     "updatedAt": now,
                     "flights": tpe_prepared["flights"],
                     "byAirport": tpe_prepared["byAirport"],
+                    "byAirportDirection": tpe_prepared["byAirportDirection"],
+                    "byDirection": tpe_prepared["byDirection"],
                     "count": len(tpe_rows),
                 },
                 ensure_ascii=False,

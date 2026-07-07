@@ -255,23 +255,44 @@ def sort_flight_list(flights: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def prepare_snapshot(flights: list[dict[str, Any]]) -> dict[str, Any]:
-    """豐富化並依機場預排序（供前端直接讀取，避免即時排序卡頓）。"""
+    """豐富化並依機場＋起飛/抵達預排序（供前端直接讀取）。"""
     now_mins = _taiwan_now_minutes()
     enriched = [enrich_flight(f, now_mins) for f in flights]
     grouped = _flights_by_airport(enriched)
-    sorted_by = {code: sort_flight_list(rows) for code, rows in grouped.items()}
+
+    by_airport: dict[str, list[dict[str, Any]]] = {}
+    by_airport_direction: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    by_direction: dict[str, list[dict[str, Any]]] = {"departure": [], "arrival": []}
+
+    for code, rows in grouped.items():
+        deps = [f for f in rows if f.get("direction") == "departure"]
+        arrs = [f for f in rows if f.get("direction") == "arrival"]
+        dep_sorted = sort_flight_list(deps)
+        arr_sorted = sort_flight_list(arrs)
+        by_airport_direction[code] = {"departure": dep_sorted, "arrival": arr_sorted}
+        by_airport[code] = dep_sorted + arr_sorted
+        by_direction["departure"].extend(dep_sorted)
+        by_direction["arrival"].extend(arr_sorted)
+
+    by_direction["departure"] = sort_flight_list(by_direction["departure"])
+    by_direction["arrival"] = sort_flight_list(by_direction["arrival"])
 
     all_sorted: list[dict[str, Any]] = []
     seen: set[str] = set()
     for code in AIRPORT_FETCH_ORDER:
-        if code in sorted_by:
-            all_sorted.extend(sorted_by[code])
+        if code in by_airport:
+            all_sorted.extend(by_airport[code])
             seen.add(code)
-    for code, rows in sorted_by.items():
+    for code, rows in by_airport.items():
         if code not in seen:
             all_sorted.extend(rows)
 
-    return {"flights": all_sorted, "byAirport": sorted_by}
+    return {
+        "flights": all_sorted,
+        "byAirport": by_airport,
+        "byAirportDirection": by_airport_direction,
+        "byDirection": by_direction,
+    }
 
 
 def _parse_json_text(text: str) -> Any:
