@@ -155,17 +155,41 @@ function drawWindCircle(point, key, color, fillOpacity) {
       }).addTo(windLayer);
 }
 
+function parseSatelliteBounds(raw) {
+  if (Array.isArray(raw) && raw.length === 2) return raw;
+  if (typeof raw === "string") {
+    const parts = raw.split(",").map(Number);
+    if (parts.length === 4) {
+      const [west, south, east, north] = parts;
+      return [
+        [south, west],
+        [north, east],
+      ];
+    }
+  }
+  return [
+    [-60, 85],
+    [60, 205],
+  ];
+}
+
 function updateSatelliteLayer() {
   if (satelliteLayer) {
     map.removeLayer(satelliteLayer);
     satelliteLayer = null;
   }
-  if (!document.getElementById("toggleSatellite").checked || !state.satellite) return;
-  const bounds = [
-    [0, 95],
-    [45, 150],
-  ];
-  satelliteLayer = L.imageOverlay(state.satellite.url, bounds, { opacity: 0.55 });
+  const toggle = document.getElementById("toggleSatellite");
+  if (!toggle.checked || !state.satellite?.url) return;
+
+  const bounds = parseSatelliteBounds(state.satellite.bounds);
+  const url = state.satellite.url;
+  satelliteLayer = L.imageOverlay(url, bounds, { opacity: 0.55, crossOrigin: true });
+  satelliteLayer.on("error", () => {
+    if (satelliteLayer) {
+      map.removeLayer(satelliteLayer);
+      satelliteLayer = null;
+    }
+  });
   satelliteLayer.addTo(map);
 }
 

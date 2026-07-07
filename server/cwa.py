@@ -19,10 +19,9 @@ CWA_WARN_URL = (
     "https://opendata.cwa.gov.tw/api/v1/rest/datastore/W-C0034-001"
 )
 
-# 葵花 8 號全圓盤可見光（JMA 公開圖）
-SATELLITE_IMAGE_URL = (
-    "https://www.data.jma.go.jp/mscweb/data/himawari/img/fullgif/latest/Hs_latest.jpg"
-)
+# 葵花 8/9 全圓盤可見光（JMA 公開圖，每 10 分鐘一張）
+SATELLITE_BASE = "https://www.data.jma.go.jp/mscweb/data/himawari/img/fd_/fd__vir_{slot}.jpg"
+SATELLITE_BOUNDS = [[-60, 85], [60, 205]]  # 全圓盤 [南西, 北東]
 
 
 def _get_key() -> str:
@@ -142,9 +141,50 @@ async def fetch_typhoon_warnings() -> list[dict[str, Any]]:
     return warnings
 
 
-def satellite_meta() -> dict[str, str]:
+def _himawari_slot(offset_slots: int = 0) -> str:
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc) - timedelta(minutes=10 * offset_slots)
+    minute = (now.minute // 10) * 10
+    slot = now.replace(minute=minute, second=0, microsecond=0)
+    return slot.strftime("%H%M")
+
+
+def _himawari_url(offset_slots: int = 0) -> str:
+    return SATELLITE_BASE.format(slot=_himawari_slot(offset_slots))
+
+
+async def resolve_satellite_meta() -> dict[str, Any]:
+    """解析最新可用的 Himawari 全圓盤圖 URL（舊 static latest 路徑已失效）。"""
+    headers = {"User-Agent": "TyphoonMonitor/1.0"}
+    async with async_client(timeout=15.0) as client:
+        for offset in range(6):
+            url = _himawari_url(offset)
+            try:
+                res = await client.head(url, headers=headers)
+                if res.status_code == 200:
+                    return {
+                        "url": url,
+                        "bounds": SATELLITE_BOUNDS,
+                        "attribution": "JMA Himawari",
+                        "slot": _himawari_slot(offset),
+                    }
+            except Exception:  # noqa: BLE001
+                continue
     return {
-        "url": SATELLITE_IMAGE_URL,
-        "bounds": "95,105,0,45",
+        "url": _himawari_url(1),
+        "bounds": SATELLITE_BOUNDS,
         "attribution": "JMA Himawari",
+        "slot": _himawari_slot(1),
+        "error": "衛星圖暫時無法取得",
+    }
+
+
+def satellite_meta() -> dict[str, Any]:
+    """同步 fallback（未驗證 URL）。"""
+    return {
+        "url": _himawari_url(1),
+        "bounds": SATELLITE_BOUNDS,
+        "attribution": "JMA Himawari",
+        "slot": _himawari_slot(1),
     }

@@ -39,9 +39,10 @@ async def get_typhoons(response: Response) -> dict:
     response.headers["Cache-Control"] = "no-store"
     try:
         items = await cwa.fetch_typhoons()
+        satellite = await cwa.resolve_satellite_meta()
         return {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
-            "satellite": cwa.satellite_meta(),
+            "satellite": satellite,
             "typhoons": items,
         }
     except Exception as exc:  # noqa: BLE001
