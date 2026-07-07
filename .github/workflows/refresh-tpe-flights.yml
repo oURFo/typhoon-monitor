@@ -2,17 +2,18 @@ name: Refresh TPE flights
 
 on:
   schedule:
-    # 每 10 分鐘，與主排程錯開 5 分鐘（UTC）
-    - cron: "5,15,25,35,45,55 * * * *"
+    # 每 30 分鐘（UTC），與主排程錯開 5 分鐘
+    - cron: "5,35 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  TPE_TIMEOUT: "240"
-  TPE_CONNECT_TIMEOUT: "120"
-  TPE_FETCH_RETRIES: "5"
+  TPE_SKIP_ODP: "1"
+  TPE_TIMEOUT: "60"
+  TPE_CONNECT_TIMEOUT: "30"
+  TPE_FETCH_RETRIES: "1"
   TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
   TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
 

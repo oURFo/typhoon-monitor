@@ -121,18 +121,23 @@ async def fetch_tpe_from_tdx() -> list[dict[str, Any]]:
     return flights
 
 
+def _tpe_skip_odp() -> bool:
+    return os.getenv("TPE_SKIP_ODP", "").strip().lower() in {"1", "true", "yes"}
+
+
 async def fetch_tpe_flights_with_fallback() -> tuple[list[dict[str, Any]], str | None, str]:
     """桃園：先 ODP CSV，失敗則 TDX FIDS。回傳 (flights, error, source)。"""
     config = load_airport_config()["TPE"]
     odp_err = ""
-    try:
-        rows = await _fetch_tpe_rows(config["departure"])
-        if rows:
-            flights = [normalize_flight("TPE", row, "unknown") for row in rows]
-            return flights, None, "odp"
-        odp_err = "桃園 ODP 資料為空"
-    except Exception as exc:  # noqa: BLE001
-        odp_err = str(exc).strip() or type(exc).__name__
+    if not _tpe_skip_odp():
+        try:
+            rows = await _fetch_tpe_rows(config["departure"])
+            if rows:
+                flights = [normalize_flight("TPE", row, "unknown") for row in rows]
+                return flights, None, "odp"
+            odp_err = "桃園 ODP 資料為空"
+        except Exception as exc:  # noqa: BLE001
+            odp_err = str(exc).strip() or type(exc).__name__
 
     if not tdx_configured():
         return [], odp_err or "桃園抓取失敗", ""
