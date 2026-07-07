@@ -723,6 +723,7 @@ function formatAirportCacheDetail(code) {
     lines.push(`狀態：本次更新成功`);
   }
   if (meta.rowCount != null) lines.push(`筆數：${meta.rowCount}`);
+  if (meta.dataSource) lines.push(`資料來源：${meta.dataSource === "tdx" ? "TDX（交通部）" : "桃園 ODP"}`);
   if (meta.lastError) lines.push(`錯誤：${meta.lastError}`);
   return `${label} — ${lines.join(" · ")}`;
 }

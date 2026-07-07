@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .http_client import async_client
+from .tdx import fetch_tpe_fids_payload, tdx_configured
 
 TAIWAN_TZ = timezone(timedelta(hours=8))
 
@@ -36,6 +37,116 @@ DEPARTED_KEYWORDS = ("離站", "departed", "已飛", "已出發")
 ARRIVED_KEYWORDS = ("已抵", "arrived", "已到", "抵達機坪", "抵達")
 PAST_GRACE_MIN = 20
 OVERDUE_MIN = 15
+
+# TDX FIDS 僅有 IATA 代碼，常用航司中文對照
+AIRLINE_ZH: dict[str, str] = {
+    "AE": "華信",
+    "B7": "立榮",
+    "BR": "長榮",
+    "CI": "華航",
+    "CX": "國泰",
+    "DL": "達美",
+    "EK": "阿聯酋",
+    "EY": "阿提哈德",
+    "FM": "上海航空",
+    "GE": "復興",
+    "GK": "捷星日本",
+    "HO": "吉祥",
+    "IT": "台灣虎航",
+    "JL": "日航",
+    "JX": "星宇",
+    "KE": "大韓",
+    "MH": "馬航",
+    "MM": "樂桃",
+    "NH": "全日空",
+    "OZ": "韓亞",
+    "PR": "菲航",
+    "QR": "卡達",
+    "SQ": "新航",
+    "TG": "泰航",
+    "TR": "酷航",
+    "UA": "聯合",
+    "VN": "越航",
+    "Z2": "亞航",
+}
+
+
+def _airline_zh(code: str) -> str:
+    c = (code or "").strip().upper()
+    return AIRLINE_ZH.get(c, c)
+
+
+def _normalize_tpe_tdx(raw: dict[str, Any], direction: str) -> dict[str, Any]:
+    airline_code = _first(raw.get("AirlineID"))
+    if direction == "departure":
+        sched = _first(raw.get("ScheduleDepartureTime"))
+        est = _first(raw.get("EstimatedDepartureTime"), raw.get("ActualDepartureTime"))
+        status_text = _first(raw.get("DepartureRemark"), raw.get("DepartureRemarkEn"))
+        destination = _first(raw.get("ArrivalAirportID"))
+        origin = ""
+    else:
+        sched = _first(raw.get("ScheduleArrivalTime"))
+        est = _first(raw.get("EstimatedArrivalTime"), raw.get("ActualArrivalTime"))
+        status_text = _first(raw.get("ArrivalRemark"), raw.get("ArrivalRemarkEn"))
+        origin = _first(raw.get("DepartureAirportID"))
+        destination = ""
+    return {
+        "airport": "TPE",
+        "direction": direction,
+        "flightNo": _compose_flight_no(airline_code, raw.get("FlightNumber")),
+        "airlineCode": airline_code,
+        "airline": _airline_zh(airline_code),
+        "destination": destination,
+        "origin": origin,
+        "scheduledTime": _format_time(sched),
+        "estimatedTime": _format_time(est),
+        "terminal": _first(raw.get("Terminal")),
+        "gate": _first(raw.get("Gate")),
+        "aircraftType": _first(raw.get("AcType")),
+        "status": _status_from_text(status_text),
+        "statusText": status_text,
+        "remark": "",
+    }
+
+
+async def fetch_tpe_from_tdx() -> list[dict[str, Any]]:
+    payload = await fetch_tpe_fids_payload()
+    flights: list[dict[str, Any]] = []
+    for row in payload.get("FIDSDeparture") or []:
+        if isinstance(row, dict):
+            flights.append(_normalize_tpe_tdx(row, "departure"))
+    for row in payload.get("FIDSArrival") or []:
+        if isinstance(row, dict):
+            flights.append(_normalize_tpe_tdx(row, "arrival"))
+    return flights
+
+
+async def fetch_tpe_flights_with_fallback() -> tuple[list[dict[str, Any]], str | None, str]:
+    """桃園：先 ODP CSV，失敗則 TDX FIDS。回傳 (flights, error, source)。"""
+    config = load_airport_config()["TPE"]
+    odp_err = ""
+    try:
+        rows = await _fetch_tpe_rows(config["departure"])
+        if rows:
+            flights = [normalize_flight("TPE", row, "unknown") for row in rows]
+            return flights, None, "odp"
+        odp_err = "桃園 ODP 資料為空"
+    except Exception as exc:  # noqa: BLE001
+        odp_err = str(exc).strip() or type(exc).__name__
+
+    if not tdx_configured():
+        return [], odp_err or "桃園抓取失敗", ""
+
+    try:
+        flights = await fetch_tpe_from_tdx()
+        if flights:
+            return flights, None, "tdx"
+        tdx_empty = "TDX 資料為空"
+        return [], f"ODP: {odp_err}; {tdx_empty}" if odp_err else tdx_empty, ""
+    except Exception as exc:  # noqa: BLE001
+        tdx_err = str(exc).strip() or type(exc).__name__
+        combined = f"ODP: {odp_err}; TDX: {tdx_err}" if odp_err else tdx_err
+        return [], combined, ""
 
 
 def load_airport_config() -> dict[str, Any]:
@@ -384,8 +495,10 @@ async def fetch_airport_flights(code: str, config: dict[str, Any]) -> list[dict[
             flights.append(normalize_flight(code, row, direction))
 
     if code == "TPE":
-        rows = await _fetch_tpe_rows(config["departure"])
-        return [normalize_flight(code, row, "unknown") for row in rows]
+        flights, err, _source = await fetch_tpe_flights_with_fallback()
+        if err:
+            raise RuntimeError(err)
+        return flights
 
     if code == "TSA":
         await add_from(config.get("departure"), "departure")

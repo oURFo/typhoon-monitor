@@ -13,7 +13,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from server.flights import fetch_airport, merge_tpe_snapshot, prepare_snapshot  # noqa: E402
+from server.flights import fetch_tpe_flights_with_fallback, merge_tpe_snapshot, prepare_snapshot  # noqa: E402
+from server.tdx import tdx_configured  # noqa: E402
 
 OUTPUT = ROOT / "data" / "flights.json"
 TPE_OUTPUT = ROOT / "data" / "tpe-flights.json"
@@ -35,6 +36,7 @@ def build_tpe_cache_meta(
     now_iso: str,
     row_count: int,
     error: str | None,
+    data_source: str = "",
 ) -> dict[str, Any]:
     if error:
         cached_at = prev.get("cachedAt") or prev.get("lastSuccessAt")
@@ -46,6 +48,7 @@ def build_tpe_cache_meta(
             "lastError": error,
             "stale": True,
             "rowCount": row_count,
+            "dataSource": prev.get("dataSource"),
         }
     return {
         "cachedAt": now_iso,
@@ -55,6 +58,7 @@ def build_tpe_cache_meta(
         "lastError": None,
         "stale": False,
         "rowCount": row_count,
+        "dataSource": data_source or "odp",
     }
 
 
@@ -83,22 +87,29 @@ async def main() -> int:
     print(
         f"TPE fetch settings: timeout={os.getenv('TPE_TIMEOUT', '120')}s "
         f"connect={os.getenv('TPE_CONNECT_TIMEOUT', '90')}s "
-        f"retries={os.getenv('TPE_FETCH_RETRIES', '3')}"
+        f"retries={os.getenv('TPE_FETCH_RETRIES', '3')} "
+        f"tdx={'yes' if tdx_configured() else 'no'}"
     )
 
-    bundle = await fetch_airport("TPE")
-    err = bundle.get("error")
-    rows = bundle.get("flights") or []
+    rows, err, source = await fetch_tpe_flights_with_fallback()
 
     if err or not rows:
         msg = err or "桃園航班資料為空"
         print(f"ERROR: TPE fetch failed: {msg}", file=sys.stderr)
+        if not tdx_configured():
+            print("  hint: set TDX_CLIENT_ID and TDX_CLIENT_SECRET for cloud fallback", file=sys.stderr)
         if TPE_OUTPUT.exists() and prev_meta:
             print(f"  kept existing {TPE_OUTPUT}")
         return 1
 
     prepared = prepare_snapshot(rows)
-    tpe_meta = build_tpe_cache_meta(prev=prev_meta, now_iso=now, row_count=len(rows), error=None)
+    tpe_meta = build_tpe_cache_meta(
+        prev=prev_meta,
+        now_iso=now,
+        row_count=len(rows),
+        error=None,
+        data_source=source,
+    )
     tpe_payload = {
         "updatedAt": now,
         "flights": prepared["flights"],
@@ -110,7 +121,7 @@ async def main() -> int:
     }
     TPE_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     TPE_OUTPUT.write_text(json.dumps(tpe_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Wrote {len(rows)} TPE flights -> {TPE_OUTPUT}")
+    print(f"Wrote {len(rows)} TPE flights -> {TPE_OUTPUT} (source={source})")
 
     merge_into_flights_json(tpe_payload, tpe_meta)
     return 0

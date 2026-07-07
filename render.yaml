@@ -11,5 +11,9 @@ services:
     envVars:
       - key: CWA_API_KEY
         sync: false
+      - key: TDX_CLIENT_ID
+        sync: false
+      - key: TDX_CLIENT_SECRET
+        sync: false
       - key: PYTHON_VERSION
         value: "3.12.0"
