@@ -16,6 +16,8 @@ const state = {
   byAirportDirection: {},
   byDirection: {},
   cacheHint: "",
+  dataUpdatedAt: null,
+  cacheMeta: {},
 };
 
 let map;
@@ -359,6 +361,7 @@ function renderAirportTabs() {
   allBtn.onclick = () => {
     state.airportFilter = "all";
     renderAirportTabs();
+    renderCachePanel();
     renderFlights();
   };
   tabs.appendChild(allBtn);
@@ -367,9 +370,12 @@ function renderAirportTabs() {
     const btn = document.createElement("button");
     btn.className = `tab-btn${state.airportFilter === a.code ? " active" : ""}`;
     btn.textContent = AIRPORT_LABEL[a.code] || a.name || a.code;
+    const cm = getAirportCacheMeta(a.code);
+    if (cm?.stale) btn.textContent += " ⚠";
     btn.onclick = () => {
       state.airportFilter = a.code;
       renderAirportTabs();
+      renderCachePanel();
       renderFlights();
     };
     tabs.appendChild(btn);
@@ -531,6 +537,7 @@ async function fetchFlightsPayload() {
       name: "桃園國際機場",
       stale: true,
       error: "合併 tpe-flights.json 快取",
+      ...(tpeData.cacheMeta?.TPE || {}),
     });
     return {
       ...data,
@@ -538,6 +545,7 @@ async function fetchFlightsPayload() {
       byAirport,
       byAirportDirection,
       byDirection,
+      cacheMeta: { ...(data.cacheMeta || {}), ...(tpeData.cacheMeta || {}) },
       airports,
       count: others.length + tpeRows.length,
     };
@@ -573,19 +581,68 @@ function filterFlightsLocal(flights, { destination = "", airline = "", number = 
   });
 }
 
+function formatTs(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("zh-TW");
+}
+
+function getAirportCacheMeta(code) {
+  const meta = state.cacheMeta[code] || state.airports.find((a) => a.code === code);
+  return meta ? { code, ...meta } : null;
+}
+
+function formatAirportCacheDetail(code) {
+  const meta = getAirportCacheMeta(code);
+  if (!meta) return `${AIRPORT_LABEL[code] || code}：無快取資訊`;
+  const label = AIRPORT_LABEL[code] || code;
+  const lines = [];
+  lines.push(`資料時間：${formatTs(meta.cachedAt || meta.lastSuccessAt)}`);
+  lines.push(`上次嘗試：${formatTs(meta.lastAttemptAt || state.dataUpdatedAt)}`);
+  if (meta.stale) {
+    lines.push(`狀態：快取（本次更新失敗）`);
+    lines.push(`連續失敗：${meta.failCount || 0} 次`);
+  } else if (meta.failCount > 0) {
+    lines.push(`連續失敗：${meta.failCount} 次（本次已成功）`);
+  } else {
+    lines.push(`狀態：本次更新成功`);
+  }
+  if (meta.rowCount != null) lines.push(`筆數：${meta.rowCount}`);
+  if (meta.lastError) lines.push(`錯誤：${meta.lastError}`);
+  return `${label} — ${lines.join(" · ")}`;
+}
+
+function renderCachePanel() {
+  const panel = document.getElementById("cachePanel");
+  if (!panel) return;
+
+  const parts = [`整體快照：${formatTs(state.dataUpdatedAt)}（GitHub 每 10 分鐘更新）`];
+
+  if (state.airportFilter !== "all") {
+    parts.push(formatAirportCacheDetail(state.airportFilter));
+  } else {
+    AIRPORT_CODES.map((code) => getAirportCacheMeta(code))
+      .filter((m) => m && (m.stale || (m.failCount || 0) > 0 || m.lastError))
+      .forEach((m) => parts.push(formatAirportCacheDetail(m.code)));
+  }
+
+  panel.className = `cache-panel${getAirportCacheMeta("TPE")?.stale ? " cache-warn" : ""}`;
+  panel.innerHTML = parts.map((p) => `<div>${p}</div>`).join("");
+}
+
 function formatFlightCacheHint(data) {
   const parts = [];
   if (data.updatedAt) {
-    parts.push(
-      "航班資料 " +
-        new Date(data.updatedAt).toLocaleString("zh-TW") +
-        " 更新（GitHub 每 10 分鐘）"
-    );
+    parts.push(`整體更新 ${formatTs(data.updatedAt)}`);
   }
   const stale = (data.airports || []).filter((a) => a.stale);
   if (stale.length) {
     parts.push(
-      stale.map((a) => `${AIRPORT_LABEL[a.code] || a.code}：快取資料`).join(" · ")
+      stale
+        .map(
+          (a) =>
+            `${AIRPORT_LABEL[a.code] || a.code} 快取 ${formatTs(a.cachedAt)}（失敗 ${a.failCount || "?"} 次）`
+        )
+        .join(" · ")
     );
   }
   const failed = (data.airports || []).filter((a) => a.error && !a.stale);
@@ -613,6 +670,8 @@ async function loadFlights() {
     state.byDirection = built.byDirection;
   }
 
+  state.dataUpdatedAt = data.updatedAt || null;
+  state.cacheMeta = data.cacheMeta || {};
   state.flights = state.allFlights;
   const fromApi = data.airports || [];
   state.airports = fromApi.length
@@ -620,13 +679,26 @@ async function loadFlights() {
         code: a.code,
         name: AIRPORT_LABEL[a.code] || a.name || a.code,
         error: a.error || null,
+        stale: !!a.stale,
+        cachedAt: a.cachedAt || null,
+        lastAttemptAt: a.lastAttemptAt || null,
+        lastSuccessAt: a.lastSuccessAt || null,
+        failCount: a.failCount || 0,
+        lastError: a.lastError || null,
+        rowCount: a.rowCount ?? null,
       }))
     : AIRPORT_CODES.map((code) => ({
         code,
         name: AIRPORT_LABEL[code] || code,
       }));
+  if (!Object.keys(state.cacheMeta).length) {
+    state.cacheMeta = Object.fromEntries(
+      state.airports.filter((a) => a.cachedAt || a.stale).map((a) => [a.code, a])
+    );
+  }
   state.cacheHint = formatFlightCacheHint(data);
   document.getElementById("searchHint").textContent = state.cacheHint;
+  renderCachePanel();
   renderDirectionTabs();
   renderAirportTabs();
   renderFlights();
