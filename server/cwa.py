@@ -18,8 +18,10 @@ CWA_TYPHOON_URL = (
 CWA_WARN_URL = (
     "https://opendata.cwa.gov.tw/api/v1/rest/datastore/W-C0034-001"
 )
+# 色調強化紅外線東亞圖（GeoInfo 為地理配準邊界，與 Leaflet 地圖一致）
+# O-B0032 高解析系列為 Lambert 投影，直接 imageOverlay 會造成台灣等地偏移
 CWA_SATELLITE_FILEAPI = (
-    "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/O-B0032-001"
+    "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/O-B0030-002"
 )
 
 # JMA 葵花備援（與 CWA 颱風座標系不完全一致，僅作 fallback）
@@ -170,9 +172,10 @@ def _extract_cwa_satellite_payload(data: dict[str, Any]) -> dict[str, Any] | Non
     return {
         "url": url,
         "bounds": _bounds_from_cwa_geo(geo),
-        "attribution": "CWA Himawari",
+        "attribution": "CWA 色調強化衛星圖",
         "region": "East Asia",
         "source": "cwa",
+        "product": "O-B0030-002",
         "observedAt": obs.get("Datetime"),
         "description": resource.get("ResourceDesc"),
     }

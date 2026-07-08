@@ -82,7 +82,7 @@ python scripts\fetch_flights_snapshot.py
 ## 資料來源
 
 - 颱風：中央氣象署 Open Data
-- 衛星雲圖：JMA Himawari 公開圖
+- 衛星雲圖：CWA 色調強化紅外線（O-B0030-002，地理配準）
 - 航班：各機場官網免費 JSON（無需 API Key）
 
 ## 授權
