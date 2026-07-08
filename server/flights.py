@@ -33,10 +33,11 @@ AIRPORT_FETCH_ORDER = ("TSA", "KHH", "RMQ", "TPE")
 
 CANCEL_KEYWORDS = ("取消", "cancel", "canceled", "cancelled")
 DELAY_KEYWORDS = ("延誤", "delay", "delayed", "晚")
-DEPARTED_KEYWORDS = ("離站", "departed", "已飛", "已出發")
+DEPARTED_KEYWORDS = ("離站", "departed", "已飛", "已出發", "出發departed")
 ARRIVED_KEYWORDS = ("已抵", "arrived", "已到", "抵達機坪", "抵達")
 PAST_GRACE_MIN = 20
 OVERDUE_MIN = 15
+FLIGHT_LOOKAHEAD_DAYS = 1  # 今天 + 明天
 
 # TDX FIDS 僅有 IATA 代碼，常用航司中文對照
 AIRLINE_ZH: dict[str, str] = {
@@ -76,6 +77,114 @@ def _airline_zh(code: str) -> str:
     return AIRLINE_ZH.get(c, c)
 
 
+def _parse_flight_date(*values: Any) -> str:
+    """回傳台灣日期 YYYY-MM-DD；無法解析則空字串。"""
+    for value in values:
+        raw = _first(value)
+        if not raw:
+            continue
+        text = raw.replace("Z", "+00:00")
+        try:
+            if "T" in text:
+                dt = datetime.fromisoformat(text)
+            else:
+                dt = datetime.strptime(text[:10], "%Y-%m-%d")
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=TAIWAN_TZ)
+            return dt.astimezone(TAIWAN_TZ).date().isoformat()
+        except ValueError:
+            continue
+    return ""
+
+
+def _allowed_flight_dates(extra_days: int = FLIGHT_LOOKAHEAD_DAYS) -> set[str]:
+    today = datetime.now(TAIWAN_TZ).date()
+    return {(today + timedelta(days=i)).isoformat() for i in range(extra_days + 1)}
+
+
+def _keep_flight_by_date(flight: dict[str, Any], allowed: set[str]) -> bool:
+    flight_date = _first(flight.get("flightDate"))
+    if not flight_date:
+        return True  # ODP 等無日期來源，交由後續狀態／去重處理
+    return flight_date in allowed
+
+
+def _flight_identity_key(flight: dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        _first(flight.get("airport")),
+        _first(flight.get("direction")),
+        _first(flight.get("flightNo")).upper(),
+        _first(flight.get("flightDate")) or _first(flight.get("scheduledTime")),
+    )
+
+
+def _flight_freshness_score(flight: dict[str, Any]) -> tuple[int, int, int, int]:
+    """分數越高越優先保留（同一班多筆時）。"""
+    blob = f"{flight.get('statusText', '')} {flight.get('remark', '')}".lower()
+    has_actual = 1 if any(k in blob for k in (*DEPARTED_KEYWORDS, *ARRIVED_KEYWORDS)) else 0
+    has_gate = 1 if _first(flight.get("gate")) else 0
+    has_aircraft = 1 if _first(flight.get("aircraftType")) not in ("", "-") else 0
+    has_est = 1 if _first(flight.get("estimatedTime")) else 0
+    return (has_actual, has_gate, has_aircraft, has_est)
+
+
+def dedupe_flights(flights: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """同機場／方向／班號／日期只留最新一筆；無日期時合併相近表定時間的重複列。"""
+    best: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str, str, str]] = []
+    for flight in flights:
+        key = _flight_identity_key(flight)
+        prev = best.get(key)
+        if prev is None:
+            best[key] = flight
+            order.append(key)
+            continue
+        if _flight_freshness_score(flight) >= _flight_freshness_score(prev):
+            best[key] = flight
+
+    dated = [best[k] for k in order if _first(best[k].get("flightDate"))]
+    undated = [best[k] for k in order if not _first(best[k].get("flightDate"))]
+    if not undated:
+        return dated
+
+    # 無日期：同班號若表定時間相差 ≤60 分，視為同一班去重
+    merged_undated: list[dict[str, Any]] = []
+    buckets: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for flight in undated:
+        key = (
+            _first(flight.get("airport")),
+            _first(flight.get("direction")),
+            _first(flight.get("flightNo")).upper(),
+        )
+        buckets.setdefault(key, []).append(flight)
+
+    for rows in buckets.values():
+        rows = sorted(rows, key=lambda f: _parse_time_minutes(f.get("scheduledTime") or "") or 9999)
+        kept: list[dict[str, Any]] = []
+        for flight in rows:
+            mins = _parse_time_minutes(flight.get("scheduledTime") or "")
+            merged = False
+            for idx, existing in enumerate(kept):
+                existing_mins = _parse_time_minutes(existing.get("scheduledTime") or "")
+                if mins is not None and existing_mins is not None and abs(mins - existing_mins) <= 60:
+                    if _flight_freshness_score(flight) >= _flight_freshness_score(existing):
+                        kept[idx] = flight
+                    merged = True
+                    break
+            if not merged:
+                kept.append(flight)
+        merged_undated.extend(kept)
+
+    return dated + merged_undated
+
+
+def filter_recent_flights(flights: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """只保留今天與明天；無日期欄位者保留後再去重。"""
+    allowed = _allowed_flight_dates()
+    kept = [f for f in flights if _keep_flight_by_date(f, allowed)]
+    return dedupe_flights(kept)
+
+
 def _normalize_tpe_tdx(
     raw: dict[str, Any],
     direction: str,
@@ -95,6 +204,7 @@ def _normalize_tpe_tdx(
         status_text = _first(raw.get("ArrivalRemark"), raw.get("ArrivalRemarkEn"))
         origin = airport_zh_label(_first(raw.get("DepartureAirportID")), names)
         destination = ""
+    flight_date = _parse_flight_date(raw.get("FlightDate"), sched, est)
     return {
         "airport": "TPE",
         "direction": direction,
@@ -105,6 +215,7 @@ def _normalize_tpe_tdx(
         "origin": origin,
         "scheduledTime": _format_time(sched),
         "estimatedTime": _format_time(est),
+        "flightDate": flight_date,
         "terminal": _first(raw.get("Terminal")),
         "gate": _first(raw.get("Gate")),
         "aircraftType": _first(raw.get("AcType")),
@@ -124,7 +235,7 @@ async def fetch_tpe_from_tdx() -> list[dict[str, Any]]:
     for row in payload.get("FIDSArrival") or []:
         if isinstance(row, dict):
             flights.append(_normalize_tpe_tdx(row, "arrival", airport_names))
-    return flights
+    return filter_recent_flights(flights)
 
 
 def _tpe_skip_odp() -> bool:
@@ -236,6 +347,12 @@ def normalize_flight(airport: str, raw: dict[str, Any], direction: str) -> dict[
         direction_raw = _first(raw.get("方向"))
         airline_code = _first(raw.get("航空公司代碼"))
         flight_num = _first(raw.get("班次"))
+        flight_date = _parse_flight_date(
+            raw.get("航班日期"),
+            raw.get("日期"),
+            raw.get("表訂時間"),
+            raw.get("預計時間"),
+        )
         return {
             "airport": airport,
             "direction": _tpe_direction(direction_raw),
@@ -246,6 +363,7 @@ def normalize_flight(airport: str, raw: dict[str, Any], direction: str) -> dict[
             "origin": "",
             "scheduledTime": _format_time(_first(raw.get("表訂時間"))),
             "estimatedTime": _format_time(_first(raw.get("預計時間"))),
+            "flightDate": flight_date,
             "terminal": _first(raw.get("航廈")),
             "gate": _first(raw.get("機門")),
             "aircraftType": _first(raw.get("機型")),
@@ -328,6 +446,14 @@ def _times_differ(scheduled: str, estimated: str) -> bool:
 
 
 def _is_past_flight(flight: dict[str, Any], now_mins: int) -> bool:
+    flight_date = _first(flight.get("flightDate"))
+    today = datetime.now(TAIWAN_TZ).date().isoformat()
+    if flight_date:
+        if flight_date > today:
+            return False
+        if flight_date < today:
+            return True
+
     blob = f"{flight.get('statusText', '')} {flight.get('remark', '')}".lower()
     direction = flight.get("direction")
     if direction == "arrival":
@@ -382,13 +508,23 @@ def enrich_flight(flight: dict[str, Any], now_mins: int) -> dict[str, Any]:
 
 
 def sort_flight_list(flights: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(flights, key=lambda f: (1 if f.get("isPast") else 0, f.get("sortMinutes", 9999)))
+    today = datetime.now(TAIWAN_TZ).date().isoformat()
+    return sorted(
+        flights,
+        key=lambda f: (
+            0 if (_first(f.get("flightDate")) or today) == today else 1,
+            1 if f.get("isPast") else 0,
+            f.get("sortMinutes", 9999),
+            _first(f.get("flightDate")),
+        ),
+    )
 
 
 def prepare_snapshot(flights: list[dict[str, Any]]) -> dict[str, Any]:
     """豐富化並依機場＋起飛/抵達預排序（供前端直接讀取）。"""
     now_mins = _taiwan_now_minutes()
-    enriched = [enrich_flight(f, now_mins) for f in flights]
+    filtered = filter_recent_flights(flights)
+    enriched = [enrich_flight(f, now_mins) for f in filtered]
     grouped = _flights_by_airport(enriched)
 
     by_airport: dict[str, list[dict[str, Any]]] = {}

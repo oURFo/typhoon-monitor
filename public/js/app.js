@@ -326,25 +326,25 @@ function getFlightRows() {
   const dir = state.directionFilter;
   const code = state.airportFilter;
 
+  let rows;
   if (state.searchActive) {
-    let rows = state.flights.filter(matchesDirection);
+    rows = state.flights.filter(matchesDirection);
     if (code !== "all") {
       rows = rows.filter((f) => f.airport === code);
     }
-    return rows;
-  }
-
-  if (code !== "all") {
+  } else if (code !== "all") {
     const bucket = state.byAirportDirection?.[code]?.[dir];
-    if (bucket) return bucket;
-    const pool =
-      state.byAirport?.[code] || state.allFlights.filter((f) => f.airport === code);
-    return pool.filter(matchesDirection);
+    if (bucket) rows = bucket;
+    else {
+      const pool =
+        state.byAirport?.[code] || state.allFlights.filter((f) => f.airport === code);
+      rows = pool.filter(matchesDirection);
+    }
+  } else {
+    const bucket = state.byDirection?.[dir];
+    rows = bucket || state.allFlights.filter(matchesDirection);
   }
-
-  const bucket = state.byDirection?.[dir];
-  if (bucket) return bucket;
-  return state.allFlights.filter(matchesDirection);
+  return (rows || []).filter(isFlightWithinTodayTomorrow);
 }
 
 function formatFlightRoute(f) {
@@ -354,6 +354,29 @@ function formatFlightRoute(f) {
   }
   const dest = resolveAirportPlace(f.destination || "-");
   return `${f.origin || AIRPORT_LABEL[f.airport] || f.airport} → ${dest}`;
+}
+
+function formatFlightDateLabel(f) {
+  const d = (f.flightDate || "").trim();
+  if (!d) return "";
+  const today = taiwanDateISO(0);
+  const tomorrow = taiwanDateISO(1);
+  if (d === today) return "今天";
+  if (d === tomorrow) return "明天";
+  return d;
+}
+
+function taiwanDateISO(offsetDays = 0) {
+  const now = new Date();
+  const tw = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  tw.setUTCDate(tw.getUTCDate() + offsetDays);
+  return tw.toISOString().slice(0, 10);
+}
+
+function isFlightWithinTodayTomorrow(f) {
+  const d = (f.flightDate || "").trim();
+  if (!d) return true;
+  return d === taiwanDateISO(0) || d === taiwanDateISO(1);
 }
 
 function formatFlightAirline(f) {
@@ -396,6 +419,7 @@ async function openFlightModal(f) {
     </div>
     <dl class="flight-modal-grid">
       <dt>機場</dt><dd>${AIRPORT_LABEL[f.airport] || f.airport}</dd>
+      <dt>日期</dt><dd>${formatFlightDateLabel(f) || "—"}</dd>
       <dt>方向</dt><dd>${DIRECTION_LABEL[f.direction] || f.direction || "—"}</dd>
       <dt>路線</dt><dd>${formatFlightRoute(f)}</dd>
       <dt>時間</dt><dd>${formatFlightTimeLine(f)}</dd>
@@ -506,7 +530,7 @@ function renderFlights() {
         </div>
         <span class="badge ${f.status}">${STATUS_LABEL[f.status] || f.statusText || "-"}</span>
       </div>
-      <div>${AIRPORT_LABEL[f.airport] || f.airport}</div>
+      <div>${AIRPORT_LABEL[f.airport] || f.airport}${formatFlightDateLabel(f) ? ` · ${formatFlightDateLabel(f)}` : ""}</div>
       <div>${formatFlightRoute(f)}</div>
       <div class="muted">${formatFlightTimeLine(f)}</div>
       ${f.gate ? `<div class="muted">登機門 ${f.gate}</div>` : ""}
