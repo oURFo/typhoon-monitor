@@ -189,7 +189,9 @@ function updateSatelliteLayer() {
 
   const bounds = parseSatelliteBounds(state.satellite.bounds);
   const url = state.satellite.url;
-  satelliteLayer = L.imageOverlay(url, bounds, { opacity: 0.55, crossOrigin: true });
+  const overlayOpts = { opacity: 0.55 };
+  if (!url.startsWith("/")) overlayOpts.crossOrigin = true;
+  satelliteLayer = L.imageOverlay(url, bounds, overlayOpts);
   satelliteLayer.on("error", () => {
     if (satelliteLayer) {
       map.removeLayer(satelliteLayer);

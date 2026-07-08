@@ -18,11 +18,13 @@ CWA_TYPHOON_URL = (
 CWA_WARN_URL = (
     "https://opendata.cwa.gov.tw/api/v1/rest/datastore/W-C0034-001"
 )
+CWA_SATELLITE_FILEAPI = (
+    "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/O-B0032-001"
+)
 
-# 葵花 8/9 可見光：東南亞區域圖（已地理配準，可貼合 Leaflet 地圖）
-# JMA 範圍：105°E–140°E、0°N–30°N
+# JMA 葵花備援（與 CWA 颱風座標系不完全一致，僅作 fallback）
 SATELLITE_AREA = "se2"
-SATELLITE_BOUNDS = [[0, 105], [30, 140]]
+JMA_SATELLITE_BOUNDS = [[0, 105], [30, 140]]
 SATELLITE_BASE = "https://www.data.jma.go.jp/mscweb/data/himawari/img"
 
 
@@ -143,6 +145,59 @@ async def fetch_typhoon_warnings() -> list[dict[str, Any]]:
     return warnings
 
 
+def _parse_range_pair(value: str) -> tuple[float, float]:
+    lo, hi = str(value).split("-", 1)
+    return float(lo), float(hi)
+
+
+def _bounds_from_cwa_geo(geo: dict[str, Any]) -> list[list[float]]:
+    lon_lo, lon_hi = _parse_range_pair(geo["LongitudeRange"])
+    lat_lo, lat_hi = _parse_range_pair(geo["LatitudeRange"])
+    return [[lat_lo, lon_lo], [lat_hi, lon_hi]]
+
+
+def _extract_cwa_satellite_payload(data: dict[str, Any]) -> dict[str, Any] | None:
+    root = data.get("cwaopendata") or data
+    dataset = root.get("dataset")
+    if not isinstance(dataset, dict):
+        return None
+    geo = dataset.get("GeoInfo") or {}
+    resource = dataset.get("Resource") or {}
+    obs = dataset.get("ObsTime") or {}
+    url = str(resource.get("ProductURL") or "").strip()
+    if not url or "LongitudeRange" not in geo or "LatitudeRange" not in geo:
+        return None
+    return {
+        "url": url,
+        "bounds": _bounds_from_cwa_geo(geo),
+        "attribution": "CWA Himawari",
+        "region": "East Asia",
+        "source": "cwa",
+        "observedAt": obs.get("Datetime"),
+        "description": resource.get("ResourceDesc"),
+    }
+
+
+async def fetch_cwa_satellite_meta() -> dict[str, Any] | None:
+    """CWA 高解析東亞衛星圖（與颱風路徑同一座標基準）。"""
+    params = {"Authorization": _get_key(), "format": "JSON"}
+    async with async_client(timeout=20.0) as client:
+        res = await client.get(CWA_SATELLITE_FILEAPI, params=params, follow_redirects=True)
+        res.raise_for_status()
+        payload = _extract_cwa_satellite_payload(res.json())
+    if not payload:
+        return None
+    async with async_client(timeout=15.0) as client:
+        head = await client.head(
+            payload["url"],
+            headers={"User-Agent": "TyphoonMonitor/1.0"},
+            follow_redirects=True,
+        )
+        if head.status_code >= 400:
+            return None
+    return payload
+
+
 def _himawari_slot(offset_slots: int = 0) -> str:
     from datetime import datetime, timedelta, timezone
 
@@ -159,8 +214,7 @@ def _himawari_url(offset_slots: int = 0, *, area: str = SATELLITE_AREA) -> str:
     return f"{SATELLITE_BASE}/{area}/{area}_vir_{slot}.jpg"
 
 
-async def resolve_satellite_meta() -> dict[str, Any]:
-    """解析最新可用的 Himawari 區域圖 URL（須用區域圖才能貼合地圖）。"""
+async def _resolve_jma_satellite_meta() -> dict[str, Any]:
     headers = {"User-Agent": "TyphoonMonitor/1.0"}
     async with async_client(timeout=15.0) as client:
         for offset in range(6):
@@ -170,27 +224,44 @@ async def resolve_satellite_meta() -> dict[str, Any]:
                 if res.status_code == 200:
                     return {
                         "url": url,
-                        "bounds": SATELLITE_BOUNDS,
+                        "bounds": JMA_SATELLITE_BOUNDS,
                         "attribution": "JMA Himawari",
                         "region": "Southeast Asia 2",
+                        "source": "jma",
                         "slot": _himawari_slot(offset),
                     }
             except Exception:  # noqa: BLE001
                 continue
     return {
         "url": _himawari_url(1),
-        "bounds": SATELLITE_BOUNDS,
+        "bounds": JMA_SATELLITE_BOUNDS,
         "attribution": "JMA Himawari",
+        "region": "Southeast Asia 2",
+        "source": "jma",
         "slot": _himawari_slot(1),
         "error": "衛星圖暫時無法取得",
     }
+
+
+async def resolve_satellite_meta() -> dict[str, Any]:
+    """優先使用 CWA 東亞衛星圖（與颱風座標一致），失敗則改 JMA。"""
+    try:
+        cwa = await fetch_cwa_satellite_meta()
+        if cwa:
+            return cwa
+    except Exception as exc:  # noqa: BLE001
+        fallback = await _resolve_jma_satellite_meta()
+        fallback["error"] = f"CWA 衛星圖失敗，改用 JMA：{exc}"
+        return fallback
+    return await _resolve_jma_satellite_meta()
 
 
 def satellite_meta() -> dict[str, Any]:
     """同步 fallback（未驗證 URL）。"""
     return {
         "url": _himawari_url(1),
-        "bounds": SATELLITE_BOUNDS,
+        "bounds": JMA_SATELLITE_BOUNDS,
         "attribution": "JMA Himawari",
+        "source": "jma",
         "slot": _himawari_slot(1),
     }

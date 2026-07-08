@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import cwa, flights
+from .http_client import async_client
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
@@ -50,11 +51,35 @@ async def get_typhoons(response: Response) -> dict:
     try:
         items = await cwa.fetch_typhoons()
         satellite = await cwa.resolve_satellite_meta()
+        if satellite.get("url"):
+            satellite = {**satellite, "url": "/api/satellite/image"}
         return {
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "satellite": satellite,
             "typhoons": items,
         }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/satellite/image")
+async def get_satellite_image(response: Response) -> Response:
+    """代理 CWA/JMA 衛星圖，避免跨域並與 API 座標一致。"""
+    _no_store_headers(response)
+    try:
+        meta = await cwa.resolve_satellite_meta()
+        image_url = meta.get("url")
+        if not image_url:
+            raise RuntimeError("無衛星圖 URL")
+        async with async_client(timeout=45.0) as client:
+            res = await client.get(
+                image_url,
+                headers={"User-Agent": "TyphoonMonitor/1.0"},
+                follow_redirects=True,
+            )
+            res.raise_for_status()
+        media_type = res.headers.get("content-type", "image/jpeg")
+        return Response(content=res.content, media_type=media_type)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
