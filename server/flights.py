@@ -479,14 +479,24 @@ def enrich_flight(flight: dict[str, Any], now_mins: int) -> dict[str, Any]:
     est_m = _parse_time_minutes(est)
     sort_m = sched_m if sched_m is not None else (est_m if est_m is not None else 9999)
 
+    flight_date = _first(out.get("flightDate"))
+    today = datetime.now(TAIWAN_TZ).date().isoformat()
+    is_future_day = bool(flight_date and flight_date > today)
+
     blob = f"{out.get('statusText', '')} {out.get('remark', '')}".lower()
     is_past = _is_past_flight(out, now_mins)
     time_changed = _times_differ(sched, est)
-    overdue = sched_m is not None and not is_past and now_mins > sched_m + OVERDUE_MIN
+    # 僅比較「今天」班次是否逾時；明天以後不可用「今晚時間」去判斷逾期
+    overdue = (
+        not is_future_day
+        and sched_m is not None
+        and not is_past
+        and now_mins > sched_m + OVERDUE_MIN
+    )
 
     if any(k in blob for k in CANCEL_KEYWORDS):
         status = "cancelled"
-    elif time_changed and not is_past:
+    elif time_changed and not is_past and not is_future_day:
         status = "changed"
     elif (any(k in blob for k in DELAY_KEYWORDS) or overdue) and not is_past:
         status = "delayed"
