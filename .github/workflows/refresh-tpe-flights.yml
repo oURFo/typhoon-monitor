@@ -21,9 +21,9 @@ jobs:
   refresh-tpe:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -36,7 +36,7 @@ jobs:
       - name: Commit and push if changed
         id: commit
         run: |
-          git add data/tpe-flights.json data/flights.json data/airport-iata-zh.json
+          git add data/tpe-flights.json data/flights.json data/airport-iata-zh.json public/data/airport-iata-zh.json
           bash .github/scripts/commit-push-retry.sh "chore: refresh TPE flight data"
 
       - name: Purge jsDelivr cache
