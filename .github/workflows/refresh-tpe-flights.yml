@@ -11,6 +11,7 @@ permissions:
 
 env:
   TPE_SKIP_ODP: "1"
+  TPE_SKIP_FLIGHTS_MERGE: "1"
   TPE_TIMEOUT: "60"
   TPE_CONNECT_TIMEOUT: "30"
   TPE_FETCH_RETRIES: "1"
@@ -36,11 +37,11 @@ jobs:
       - name: Commit and push if changed
         id: commit
         run: |
-          git add data/tpe-flights.json data/flights.json data/airport-iata-zh.json public/data/airport-iata-zh.json
+          # 只提交桃園快照與機場對照；flights.json 由主排程合併，避免雙寫衝突
+          git add data/tpe-flights.json data/airport-iata-zh.json public/data/airport-iata-zh.json
           bash .github/scripts/commit-push-retry.sh "chore: refresh TPE flight data"
 
       - name: Purge jsDelivr cache
         if: steps.commit.outputs.changed == 'true'
         run: |
-          curl -fsS "https://purge.jsdelivr.net/gh/oURFo/typhoon-monitor@main/data/flights.json" || true
           curl -fsS "https://purge.jsdelivr.net/gh/oURFo/typhoon-monitor@main/data/tpe-flights.json" || true

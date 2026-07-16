@@ -130,7 +130,13 @@ async def main() -> int:
         shutil.copy2(AIRPORT_IATA_CACHE_PATH, PUBLIC_IATA)
         print(f"  synced {PUBLIC_IATA}")
 
-    merge_into_flights_json(tpe_payload, tpe_meta)
+    # GHA 桃園排程勿寫 flights.json，避免與主排程同時改同一檔造成 rebase conflict。
+    # 主排程 refresh-flights 會合併 tpe-flights.json。
+    skip_merge = os.getenv("TPE_SKIP_FLIGHTS_MERGE", "").strip().lower() in {"1", "true", "yes"}
+    if skip_merge:
+        print("  skip merge into flights.json (TPE_SKIP_FLIGHTS_MERGE)")
+    else:
+        merge_into_flights_json(tpe_payload, tpe_meta)
     return 0
 
 

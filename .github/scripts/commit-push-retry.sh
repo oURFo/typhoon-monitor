@@ -36,7 +36,8 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
   if stash_dirty; then
     STASHED=1
   fi
-  if git pull --rebase origin main && git push; then
+  # -X theirs：rebase 時「ours」是 upstream；衝突時保留本 commit 的檔案內容
+  if git pull --rebase -X theirs origin main && git push; then
     if [ "$STASHED" = 1 ]; then
       restore_stash
     fi

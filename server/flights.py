@@ -920,12 +920,25 @@ async def _fetch_github_json(filename: str, *, bypass_cache: bool = False) -> di
 
 
 async def fetch_remote_snapshot(*, bypass_cache: bool = False) -> dict[str, Any]:
-    """從 GitHub raw 讀取最新 flights.json（Render 正式環境用）。"""
+    """從 GitHub raw 讀取最新 flights.json（Render 正式環境用）。
+
+    桃園由獨立檔 tpe-flights.json 更新時，若比主快照新則合併覆蓋。
+    """
     data = await _fetch_github_json("flights.json", bypass_cache=bypass_cache)
-    if _tpe_in_snapshot(data):
-        return data
     try:
         tpe_data = await _fetch_github_json("tpe-flights.json", bypass_cache=bypass_cache)
-        return merge_tpe_snapshot(data, tpe_data)
     except Exception:  # noqa: BLE001
         return data
+
+    if not (tpe_data.get("flights") or []):
+        return data
+
+    main_tpe_at = ((data.get("cacheMeta") or {}).get("TPE") or {}).get("cachedAt") or ""
+    tpe_at = (
+        ((tpe_data.get("cacheMeta") or {}).get("TPE") or {}).get("cachedAt")
+        or tpe_data.get("updatedAt")
+        or ""
+    )
+    if not _tpe_in_snapshot(data) or (tpe_at and tpe_at > main_tpe_at):
+        return merge_tpe_snapshot(data, tpe_data)
+    return data
